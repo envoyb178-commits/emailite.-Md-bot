@@ -17,7 +17,7 @@ setInterval(() => {
   require('https').get(`https://emaillite-md.onrender.com/ping`).on('error', () => {});
 }, 2 * 60 * 1000);
 
-console.log('🚀 BOOTING EMAILLITE MD...');
+console.log(' BOOTING EMAILLITE MD...');
 
 const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, Browsers, fetchLatestBaileysVersion } = require('@whiskeysockets/baileys');
 const { Boom } = require('@hapi/boom');
