@@ -33,7 +33,10 @@ global.config = config;
 global.commands = {};
 global.categories = {};
 
-// LOAD PLUGINS - KEEP THIS ONE ONLY
+// YOUR NUMBER FOR AUTO-PAIRING
+const PAIR_NUMBER = process.env.PAIR_NUMBER || "263716491962";
+
+// LOAD PLUGINS - ONLY ONE
 const loadPlugins = () => {
   global.commands = {};
   global.categories = {};
@@ -80,7 +83,7 @@ const getRuntime = () => {
 };
 
 const getRamUsed = () => `${(process.memoryUsage().heapUsed / 1024 / 1024).toFixed(2)} MB`;
-const getRamTotal = () => `${(os.totalmem() / 1024 / 1024 / 1024).toFixed(2)} GB`;
+const getRamTotal = () => `${(os.totalmem() / 1024 / 1024).toFixed(2)} GB`;
 
 // Menu builders
 global.buildMenu = (user = "User") => `╔══════════════════════════════════════════════════════════╗
@@ -294,7 +297,6 @@ global.allMenu = () => `╔═════════════════�
 ║.photo
 ║.qr
 ║.shorturl
-║.url
 ║.weather
 ║.translate
 ║.tts
@@ -409,18 +411,20 @@ async function start() {
     markOnlineOnConnect: true,
   });
 
+  // AUTO PAIRING FOR YOUR NUMBER 263716491962
   setTimeout(async () => {
     try {
       if (!sock.authState.creds.registered) {
-        let phoneNumber = process.env.PAIR_NUMBER || ownerNumber;
-        phoneNumber = phoneNumber.replace(/[^0-9]/g, "");
+        let phoneNumber = PAIR_NUMBER.replace(/[^0-9]/g, "");
+        console.log(`🔥 Requesting pairing code for: +${phoneNumber}`);
         const code = await sock.requestPairingCode(phoneNumber);
-        console.log(`\n🔥🔥 PAIRING CODE 🔥🔥🔥\n🔗 Code for +${phoneNumber}: ${code}\n🔥🔥🔥 PAIRING CODE 🔥🔥🔥\n`);
+        const formattedCode = code?.match(/.{1,4}/g)?.join('-') || code;
+        console.log(`\n🔥🔥 PAIRING CODE 🔥🔥🔥\n🔗 Code for +${phoneNumber}: ${formattedCode}\n🔥🔥🔥 PAIRING CODE 🔥🔥🔥\n`);
       }
     } catch (e) {
-      console.error("❌ Failed to get pairing code:", e);
+      console.error("❌ Failed to get pairing code:", e.message);
     }
-  }, 5000);
+  }, 3000);
 
   sock.ev.on("creds.update", saveCreds);
 
@@ -438,9 +442,8 @@ async function start() {
       }
     } else if (connection === "open") {
       console.log(`✅ ${botName} ONLINE as ${sock.user?.id}`);
-      if (ownerNumber) {
-        await sock.sendMessage(ownerNumber + '@s.whatsapp.net', { text: `✅ ${botName} Connected!\n\n${Object.keys(global.commands).length}+ Commands Ready` });
-      }
+      const ownerJid = PAIR_NUMBER.replace(/[^0-9]/g, "") + '@s.whatsapp.net';
+      await sock.sendMessage(ownerJid, { text: `✅ ${botName} Connected!\n\n${Object.keys(global.commands).length}+ Commands Ready\nPrefix: ${prefix}` });
     }
   });
 
