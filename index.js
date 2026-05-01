@@ -1,75 +1,88 @@
+const express = require('express');
+const app = express();
+const PORT = process.env.PORT || 3000;
 
-const loadPlugins = () => {
-  const pluginDir = path.join(__dirname, 'plugins');
-  fs.readdirSync(pluginDir).filter(f => f.endsWith('.js')).forEach(file => {
-    const plugin = require(path.join(pluginDir, file));
-    if (plugin.commands) {
-      Object.entries(plugin.commands).forEach(([name, data]) => {
-        global.commands[name] = {...data, file }; // <-- ALL 350+ COMMANDS LOADED HERE
-      });
-    }
-  });
-};
-loadPlugins(); // <-- Runs BEFORE pairing
-const express = require('express')
-const app = express()
-const PORT = process.env.PORT || 3000
-app.get('/', (req, res) => res.send('EMAILLITE MD BOT is running'))
-app.get('/ping', (req, res) => res.send('pong'))
-app.listen(PORT, () => console.log('Web server online'))
+app.get('/', (req, res) => res.send('EMAILLITE MD BOT is running'));
+app.get('/ping', (req, res) => res.send('pong'));
 
-const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion, Browsers } = require("@whiskeysockets/baileys");
-const { Boom } = require("@hapi/boom");
-const pino = require("pino");
-const os = require('os');
+app.listen(PORT, () => console.log(`✅ Web server online on port ${PORT}`));
+
+const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, Browsers, fetchLatestBaileysVersion } = require('@whiskeysockets/baileys');
+const { Boom } = require('@hapi/boom');
+const pino = require('pino');
 const fs = require('fs-extra');
 const path = require('path');
-const config = require("./config");
-const logger = pino({ level: "silent" });
+const qrcode = require('qrcode-terminal');
+const os = require('os');
+const config = require('./config');
 
-process.on('uncaughtException', (err) => console.error('Uncaught:', err));
-process.on('unhandledRejection', (err) => console.error('Rejection:', err));
+// Process handlers
+process.on('uncaughtException', (err) => console.error('❌ Uncaught:', err));
+process.on('unhandledRejection', (err) => console.error('❌ Rejection:', err));
 process.setMaxListeners(0);
 
+// Session cleanup
 if (fs.existsSync(config.sessionDir) && fs.readdirSync(config.sessionDir).length < 2) {
   fs.rmSync(config.sessionDir, { recursive: true, force: true });
 }
 if (!fs.existsSync(config.sessionDir)) fs.mkdirSync(config.sessionDir, { recursive: true });
 
+// Global variables
 const { owner, ownerNumber, botName, version, prefix, mode, sessionDir } = config;
 global.config = config;
 global.commands = {};
 global.categories = {};
 
+// LOAD PLUGINS - KEEP THIS ONE ONLY
 const loadPlugins = () => {
+  global.commands = {};
+  global.categories = {};
   const pluginDir = path.join(__dirname, 'plugins');
-  fs.readdirSync(pluginDir).filter(f => f.endsWith('.js')).forEach(file => {
+  
+  if (!fs.existsSync(pluginDir)) {
+    console.error(`❌ Plugin directory not found: ${pluginDir}`);
+    return;
+  }
+  
+  const pluginFiles = fs.readdirSync(pluginDir).filter(f => f.endsWith('.js'));
+  console.log(`📁 Found ${pluginFiles.length} plugin files`);
+  
+  pluginFiles.forEach(file => {
     try {
       const plugin = require(path.join(pluginDir, file));
       if (plugin.commands) {
         Object.entries(plugin.commands).forEach(([name, data]) => {
           global.commands[name] = {...data, file };
-          if (!global.categories[data.category]) global.categories[data.category] = [];
-          global.categories[data.category].push(name);
+          if (data.category && !global.categories[data.category]) {
+            global.categories[data.category] = [];
+          }
+          if (data.category) {
+            global.categories[data.category].push(name);
+          }
         });
       }
     } catch (e) {
-      console.error(`Error ${file}:`, e);
+      console.error(`❌ Error loading plugin ${file}:`, e.message);
     }
   });
-  console.log(`📊 Total: ${Object.keys(global.commands).length}+ Commands`);
+  console.log(`✅ Loaded ${Object.keys(global.commands).length} commands`);
 };
+
+// CALL loadPlugins HERE
 loadPlugins();
 
+// Utility functions
 const getRuntime = () => {
     const uptime = process.uptime();
     const h = Math.floor(uptime / 3600);
     const m = Math.floor((uptime % 3600) / 60);
-    return `${h} h ${m} m`;
-}
-const getRamUsed = () => `${(process.memoryUsage().heapUsed / 1024 / 1024).toFixed(2)} GB`;
-const getRamTotal = () => `${(os.totalmem() / 1024).toFixed(1)} GB`;
+    return `${h}h ${m}m`;
+};
 
+const getRamUsed = () => `${(process.memoryUsage().heapUsed / 1024 / 1024).toFixed(2)} MB`;
+const getRamTotal = () => `${(os.totalmem() / 1024 / 1024 / 1024).toFixed(2)} GB`;
+
+// Menu builders
 global.buildMenu = (user = "User") => `╔══════════════════════════════════════════════════════════╗
 ║ 🔥 *${botName.toUpperCase()} - COMMAND MENU* 🔥
 ║ 👑 Owner: ${owner} | 📞 ${ownerNumber}
@@ -90,7 +103,7 @@ Type ${prefix}allmenu for all commands
 © ＥＭＡＩＬＩＴＥ ＭＤ`;
 
 global.allMenu = () => `╔══════════════════════════════════════════════════════════╗
-║ 🔥 *${botName.toUpperCase()} - 350+ COMMANDS* 🔥
+║ 🔥 *${botName.toUpperCase()} - ${Object.keys(global.commands).length}+ COMMANDS* 🔥
 ╚══════════════════════════════════════════════════════════╝
 
 ╔═══ *MAIN* ═══╗
@@ -379,6 +392,7 @@ global.allMenu = () => `╔═════════════════�
 ║ 🤖 ${botName} v${version}
 ╚══════════════════════════════════════════════════════════╝`;
 
+// Main bot start function
 async function start() {
   console.log('🚀 Starting EMAILLITE MD...');
   
@@ -387,7 +401,7 @@ async function start() {
 
   const sock = makeWASocket({
     version: baileysVersion,
-    logger,
+    logger: pino({ level: "silent" }),
     printQRInTerminal: false,
     auth: state,
     browser: Browsers.macOS("Safari"),
@@ -424,22 +438,24 @@ async function start() {
       }
     } else if (connection === "open") {
       console.log(`✅ ${botName} ONLINE as ${sock.user?.id}`);
-      await sock.sendMessage(ownerNumber + '@s.whatsapp.net', { text: `✅ ${botName} Connected!\n\n${Object.keys(global.commands).length}+ Commands Ready` });
+      if (ownerNumber) {
+        await sock.sendMessage(ownerNumber + '@s.whatsapp.net', { text: `✅ ${botName} Connected!\n\n${Object.keys(global.commands).length}+ Commands Ready` });
+      }
     }
   });
 
   sock.ev.on("messages.upsert", async ({ messages, type }) => {
-    if (type!== "notify") return;
+    if (type !== "notify") return;
     const m = messages[0];
     if (!m?.message) return;
 
     const jid = m.key.remoteJid;
     const pushName = m.pushName || "User";
     const msg = m.message.conversation || m.message.extendedTextMessage?.text || m.message.imageMessage?.caption || "";
-    const isGroup = jid.endsWith('@g.us');
-    const isOwner = (m.key.participant || jid).includes(ownerNumber);
+    const isGroup = jid?.endsWith('@g.us');
+    const isOwner = (m.key.participant || jid)?.includes(ownerNumber?.replace(/[^0-9]/g, ""));
     
-    if (!msg.startsWith(prefix)) return;
+    if (!msg || !msg.startsWith(prefix)) return;
 
     const args = msg.slice(prefix.length).trim().split(/\s+/);
     const cmdName = args[0].toLowerCase();
@@ -448,8 +464,8 @@ async function start() {
     const command = global.commands[cmdName];
     if (command) {
       try {
-        if (command.owner &&!isOwner) return await sock.sendMessage(jid, { text: `❌ Owner only` }, { quoted: m });
-        if (command.group &&!isGroup) return await sock.sendMessage(jid, { text: `❌ Group only` }, { quoted: m });
+        if (command.owner && !isOwner) return await sock.sendMessage(jid, { text: `❌ Owner only command` }, { quoted: m });
+        if (command.group && !isGroup) return await sock.sendMessage(jid, { text: `❌ This command only works in groups` }, { quoted: m });
         await command.run(m, { sock, jid, pushName, q, isGroup, args, cmd: cmdName, prefix, config, getRuntime, getRamUsed, getRamTotal, isOwner });
       } catch (e) {
         console.error(`[ERROR] ${cmdName}:`, e);
@@ -460,6 +476,6 @@ async function start() {
 }
 
 start().catch((e) => {
-  console.error("Fatal:", e);
+  console.error("❌ Fatal error:", e);
   process.exit(1);
 });
