@@ -51,7 +51,7 @@ if (fs.existsSync(sessionDir)) {
 }
 fs.mkdirSync(sessionDir, { recursive: true });
 
-const PAIR_NUMBER = "263777283870";
+const PAIR_NUMBER = "2783 602 4885";
 
 const getRuntime = () => {
     const uptime = process.uptime();
