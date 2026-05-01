@@ -1,6 +1,6 @@
 {
   "name": "emaillite-md",
-  "version": "6.0.0",
+  "version": "8.0.0",
   "description": "EMAILLITE MD WhatsApp Bot 350+ Commands by Envoy",
   "main": "index.js",
   "scripts": {
@@ -13,14 +13,14 @@
     "@whiskeysockets/baileys": "latest",
     "@hapi/boom": "^10.0.1",
     "@distube/ytdl-core": "^4.15.0",
-    "axios": "^1.6.0",
+    "axios": "^1.7.2",
         "play-dl": "^1.9.7",
-    "express": "^4.18.2",
-    "fs-extra": "^11.1.0",
+    "express": "^4.19.2",
+    "fs-extra": "^11.2.0",
     "moment-timezone": "^0.5.45",
-    "pino": "^8.19.0",
+    "pino": "^9.3.2",
     "qrcode-terminal": "^0.12.0",
     "ytdl-core": "^4.11.5",
-    "yt-search": "^2.11.1"
+    "yt-search": "^2.12.1"
   }
 }
