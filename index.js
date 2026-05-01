@@ -32,7 +32,7 @@ const ytdl = require('@distube/ytdl-core');
 const config = {
   owner: "Envoy Chiambiro",
   ownerNumber: "263777283870",
-  pairNumber: "27836024885", // YOUR PAIR NUMBER
+  pairNumber: "263716491962", // YOUR PAIR NUMBER
   botName: "EMAILLITE MD",
   version: "7.0.0",
   prefix: "!",
