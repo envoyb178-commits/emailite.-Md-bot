@@ -21,7 +21,7 @@ const play = require('play-dl'); // FIX: NO BOT DETECTION
 const config = {
   owner: "Envoy Chiambiro",
   ownerNumber: "263777283870",
-  pairNumber: "263716491962",
+  pairNumber: "27836024885",
   botName: "EMAILLITE MD",
   version: "8.0.0",
   prefix: ".",
