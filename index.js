@@ -11,7 +11,7 @@ app.get('/status', (req, res) => res.json({
   commands: Object.keys(global.commands || {}).length,
   version: '7.0.0'
 }));
-app.listen(PORT, () => console.log(`✅ Web server online on port ${PORT} - 24/7 MODE`));
+app.listen(PORT, () => console.log(` Web server online on port ${PORT} - 24/7 MODE`));
 
 // 24/7 SELF PING - WORKS ON RENDER/RAILWAY/KOYEB
 const APP_URL = process.env.RENDER_EXTERNAL_URL || process.env.RAILWAY_STATIC_URL || `http://localhost:${PORT}`;
