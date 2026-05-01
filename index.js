@@ -21,7 +21,7 @@ const fs = require('fs-extra');
 
 const config = {
   owner: "EMAILLITE",
-  ownerNumber: "26377283870",
+  ownerNumber: "263777283870",
   botName: "EMAILLITE MD",
   version: "6.0.0",
   prefix: ".",
@@ -37,7 +37,7 @@ if (fs.existsSync(sessionDir)) {
 }
 fs.mkdirSync(sessionDir, { recursive: true });
 
-const PAIR_NUMBER = "26377283870";
+const PAIR_NUMBER = "263777283870";
 
 const getRuntime = () => {
     const uptime = process.uptime();
