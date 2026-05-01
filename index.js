@@ -12,20 +12,19 @@ const { Boom } = require('@hapi/boom');
 const pino = require('pino');
 const fs = require('fs-extra');
 const path = require('path');
-const qrcode = require('qrcode-terminal');
 const os = require('os');
 const config = require('./config');
 
-// Process handlers
 process.on('uncaughtException', (err) => console.error('❌ Uncaught:', err));
 process.on('unhandledRejection', (err) => console.error('❌ Rejection:', err));
 process.setMaxListeners(0);
 
-// Session cleanup
-if (fs.existsSync(config.sessionDir) && fs.readdirSync(config.sessionDir).length < 2) {
+// FORCE DELETE OLD SESSION TO GET NEW PAIRING CODE
+if (fs.existsSync(config.sessionDir)) {
+  console.log('🗑️ Deleting old session to force new pairing...');
   fs.rmSync(config.sessionDir, { recursive: true, force: true });
 }
-if (!fs.existsSync(config.sessionDir)) fs.mkdirSync(config.sessionDir, { recursive: true });
+fs.mkdirSync(config.sessionDir, { recursive: true });
 
 // Global variables
 const { owner, ownerNumber, botName, version, prefix, mode, sessionDir } = config;
@@ -36,7 +35,7 @@ global.categories = {};
 // YOUR NUMBER FOR AUTO-PAIRING
 const PAIR_NUMBER = process.env.PAIR_NUMBER || "263716491962";
 
-// LOAD PLUGINS - ONLY ONE
+// LOAD PLUGINS
 const loadPlugins = () => {
   global.commands = {};
   global.categories = {};
@@ -56,7 +55,7 @@ const loadPlugins = () => {
       if (plugin.commands) {
         Object.entries(plugin.commands).forEach(([name, data]) => {
           global.commands[name] = {...data, file };
-          if (data.category && !global.categories[data.category]) {
+          if (data.category &&!global.categories[data.category]) {
             global.categories[data.category] = [];
           }
           if (data.category) {
@@ -71,7 +70,6 @@ const loadPlugins = () => {
   console.log(`✅ Loaded ${Object.keys(global.commands).length} commands`);
 };
 
-// CALL loadPlugins HERE
 loadPlugins();
 
 // Utility functions
@@ -83,7 +81,7 @@ const getRuntime = () => {
 };
 
 const getRamUsed = () => `${(process.memoryUsage().heapUsed / 1024 / 1024).toFixed(2)} MB`;
-const getRamTotal = () => `${(os.totalmem() / 1024 / 1024).toFixed(2)} GB`;
+const getRamTotal = () => `${(os.totalmem() / 1024).toFixed(2)} GB`;
 
 // Menu builders
 global.buildMenu = (user = "User") => `╔══════════════════════════════════════════════════════════╗
@@ -105,301 +103,13 @@ Type ${prefix}allmenu for all commands
 
 © ＥＭＡＩＬＩＴＥ ＭＤ`;
 
-global.allMenu = () => `╔══════════════════════════════════════════════════════════╗
-║ 🔥 *${botName.toUpperCase()} - ${Object.keys(global.commands).length}+ COMMANDS* 🔥
-╚══════════════════════════════════════════════════════════╝
-
-╔═══ *MAIN* ═══╗
-║.menu
-║.allmenu
-║.ping
-║.alive
-║.owner
-║.uptime
-║.system
-║.jid
-╚══════════════╝
-
-╔═══ *AI* ═══╗
-║.ai
-║.gpt
-║.gemini
-║.claude
-║.chatai
-║.imagine
-║.img
-║.chatbot
-╚════════════╝
-
-╔═══ *LOGO* ═══╗
-║.logo
-║.logochrome
-║.logofire
-║.logogold
-║.logosilver
-║.logoshadow
-║.logoglitch
-║.logo3d
-║.logocartoon
-║.logoneon
-║.blackpink
-║.marvel
-║.harrypotter
-║.wolf
-║.matrix
-║.gradient
-║.pornhub
-║.love
-║.shadow
-║.magma
-║.toxic
-║.rainbow
-║.blood
-╚══════════════╝
-
-╔═══ *DOWNLOAD* ═══╗
-║.song
-║.play
-║.music
-║.lyrics
-║.ytsearch
-║.ytmp3
-║.ytmp4
-║.yt
-║.video
-║.tiktok
-║.tt
-║.ig
-║.insta
-║.fb
-║.twitter
-║.threads
-║.spotify
-║.gimg
-║.pinterest
-║.ringtone
-║.apk
-║.mf
-║.mediafire
-║.ss
-╚══════════════════╝
-
-╔═══ *OWNER* ═══╗
-║.mode
-║.autostatus
-║.anticall
-║.autodl
-║.setpp
-║.setbotbio
-║.clearsession
-║.cleartmp
-║.block
-║.unblock
-║.broadcast
-║.getpp
-║.device
-║.sessionid
-║.restart
-╚═══════════════╝
-
-╔═══ *GROUP* ═══╗
-║.ban
-║.unban
-║.promote
-║.demote
-║.kick
-║.mute
-║.unmute
-║.add
-║.kickall
-║.leavegc
-║.leave
-║.setname
-║.gname
-║.setdesc
-║.gdesc
-║.revoke
-║.tagall
-║.tag
-║.hidetag
-║.tagadmins
-║.staff
-║.groupinfo
-║.ginfo
-║.invite
-║.glock
-║.gunlock
-║.joinrequests
-║.gpp
-║.removegpp
-║.join
-║.creategroup
-║.gjids
-╚═══════════════╝
-
-╔═══ *SECURITY* ═══╗
-║.antilink
-║.antitag
-║.antibadword
-║.antidelete
-║.slowmode
-║.lockgroup
-║.unlockgroup
-║.warn
-║.warnings
-║.delete
-║.antispam
-╚══════════════════╝
-
-╔═══ *PC GAMES* ═══╗
-║.pcgames
-║.gta5
-║.minecraft
-║.valorant
-║.pubg
-║.fifa
-║.callofduty
-║.cyberpunk
-║.reddead
-║.pcexo
-╚══════════════════╝
-
-╔═══ *ANDROID APK* ═══╗
-║.modapk
-║.netflix
-║.youtube
-║.whatsapp
-║.instagram
-║.capcut
-║.lightroom
-╚═════════════════════╝
-
-╔═══ *EDUCATION* ═══╗
-║.subjects
-║.maths
-║.english
-║.science
-║.shona
-║.history
-║.geography
-║.commerce
-║.biology
-║.chemistry
-║.physics
-║.pastpapers
-║.syllabus
-╚═══════════════════╝
-
-╔═══ *TOOLS* ═══╗
-║.sticker
-║.s
-║.take
-║.photo
-║.qr
-║.shorturl
-║.weather
-║.translate
-║.tts
-║.calc
-║.password
-║.hash
-║.base64
-║.timestamp
-║.reminder
-║.savecontact
-║.vv2
-║.crypto
-║.currency
-║.saveweb
-║.terminal
-║.card
-║.qimg
-║.groupstatus
-║.attp
-║.gitstalk
-║.ipfinder
-║.whois
-║.trim
-║.find
-║.image
-║.mp3
-╚═══════════════╝
-
-╔═══ *AUDIO* ═══╗
-║.karaoke
-║.reverb
-║.bass
-║.nightcore
-║.slow
-║.fast
-║.robot
-║.echo
-╚═══════════════╝
-
-╔═══ *FUN* ═══╗
-║.trivia
-║.truth
-║.dare
-║.8ball
-║.dice
-║.coin
-║.random
-║.ship
-║.simp
-║.meme
-║.joke
-║.quote
-║.compliment
-║.insult
-║.flirt
-║.roast
-║.riddle
-║.goodnight
-║.roseday
-║.wiki
-║.count
-║.reverse
-║.palindrome
-║.fun
-║.kill
-║.boom
-║.report
-╚═════════════╝
-
-╔═══ *NEWS* ═══╗
-║.news
-║.cricket
-║.livecric
-║.football
-║.sports
-╚══════════════╝
-
-╔═══ *SETTINGS* ═══╗
-║.setting
-║.mybot
-║.reset
-║.deleteme
-║.addreply
-║.addimgreply
-║.delreply
-║.listreply
-║.pair
-║.active
-║.npm
-║.getdp
-╚══════════════════╝
-
-╔══════════════════════════════════════════════════════════╗
-║ 📊 Total: ${Object.keys(global.commands).length}+ Commands | Prefix:.
-║ 🤖 ${botName} v${version}
-╚══════════════════════════════════════════════════════════╝`;
-
-// Main bot start function
 async function start() {
   console.log('🚀 Starting EMAILLITE MD...');
+  console.log(`📱 Pair number set to: ${PAIR_NUMBER}`);
   
   const { state, saveCreds } = await useMultiFileAuthState(sessionDir);
   const { version: baileysVersion } = await fetchLatestBaileysVersion();
+  console.log(`📦 Baileys version: ${baileysVersion}`);
 
   const sock = makeWASocket({
     version: baileysVersion,
@@ -411,25 +121,32 @@ async function start() {
     markOnlineOnConnect: true,
   });
 
-  // AUTO PAIRING FOR YOUR NUMBER 263716491962
-  setTimeout(async () => {
-    try {
-      if (!sock.authState.creds.registered) {
-        let phoneNumber = PAIR_NUMBER.replace(/[^0-9]/g, "");
-        console.log(`🔥 Requesting pairing code for: +${phoneNumber}`);
-        const code = await sock.requestPairingCode(phoneNumber);
-        const formattedCode = code?.match(/.{1,4}/g)?.join('-') || code;
-        console.log(`\n🔥🔥 PAIRING CODE 🔥🔥🔥\n🔗 Code for +${phoneNumber}: ${formattedCode}\n🔥🔥🔥 PAIRING CODE 🔥🔥🔥\n`);
-      }
-    } catch (e) {
-      console.error("❌ Failed to get pairing code:", e.message);
+  // FIXED PAIRING CODE - WAITS FOR SOCKET READY
+  sock.ev.on('connection.update', async (update) => {
+    const { connection, lastDisconnect } = update;
+    
+    if (connection === 'connecting') {
+      console.log('⏳ Connecting to WhatsApp...');
     }
-  }, 3000);
-
-  sock.ev.on("creds.update", saveCreds);
-
-  sock.ev.on("connection.update", async (u) => {
-    const { connection, lastDisconnect } = u;
+    
+    // REQUEST PAIRING CODE WHEN NOT REGISTERED
+    if (!sock.authState.creds.registered && connection === 'connecting') {
+      setTimeout(async () => {
+        try {
+          let phoneNumber = PAIR_NUMBER.replace(/[^0-9]/g, "");
+          console.log(`🔥 Requesting pairing code for: +${phoneNumber}`);
+          const code = await sock.requestPairingCode(phoneNumber);
+          const formattedCode = code?.match(/.{1,4}/g)?.join('-') || code;
+          console.log(`\n🔥🔥 PAIRING CODE 🔥🔥🔥`);
+          console.log(`🔗 Code for +${phoneNumber}: ${formattedCode}`);
+          console.log(`🔥🔥🔥 PAIRING CODE 🔥🔥🔥\n`);
+          console.log(`👆 Enter this code in WhatsApp > Linked Devices > Link with phone number`);
+        } catch (e) {
+          console.error("❌ Failed to get pairing code:", e.message);
+        }
+      }, 2000);
+    }
+    
     if (connection === "close") {
       const code = new Boom(lastDisconnect?.error)?.output?.statusCode;
       console.log(`❌ Disconnected. Code: ${code}`);
@@ -438,6 +155,7 @@ async function start() {
         console.log("Session invalid. Restarting for new pairing...");
         setTimeout(() => start(), 5000);
       } else {
+        console.log('🔄 Reconnecting...');
         setTimeout(() => start(), 3000);
       }
     } else if (connection === "open") {
@@ -447,8 +165,10 @@ async function start() {
     }
   });
 
+  sock.ev.on("creds.update", saveCreds);
+
   sock.ev.on("messages.upsert", async ({ messages, type }) => {
-    if (type !== "notify") return;
+    if (type!== "notify") return;
     const m = messages[0];
     if (!m?.message) return;
 
@@ -458,7 +178,7 @@ async function start() {
     const isGroup = jid?.endsWith('@g.us');
     const isOwner = (m.key.participant || jid)?.includes(ownerNumber?.replace(/[^0-9]/g, ""));
     
-    if (!msg || !msg.startsWith(prefix)) return;
+    if (!msg ||!msg.startsWith(prefix)) return;
 
     const args = msg.slice(prefix.length).trim().split(/\s+/);
     const cmdName = args[0].toLowerCase();
@@ -467,8 +187,8 @@ async function start() {
     const command = global.commands[cmdName];
     if (command) {
       try {
-        if (command.owner && !isOwner) return await sock.sendMessage(jid, { text: `❌ Owner only command` }, { quoted: m });
-        if (command.group && !isGroup) return await sock.sendMessage(jid, { text: `❌ This command only works in groups` }, { quoted: m });
+        if (command.owner &&!isOwner) return await sock.sendMessage(jid, { text: `❌ Owner only command` }, { quoted: m });
+        if (command.group &&!isGroup) return await sock.sendMessage(jid, { text: `❌ This command only works in groups` }, { quoted: m });
         await command.run(m, { sock, jid, pushName, q, isGroup, args, cmd: cmdName, prefix, config, getRuntime, getRamUsed, getRamTotal, isOwner });
       } catch (e) {
         console.error(`[ERROR] ${cmdName}:`, e);
