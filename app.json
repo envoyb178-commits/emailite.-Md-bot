@@ -1,0 +1,10 @@
+{
+  "name": "EMAILLITE MD",
+  "description": "WhatsApp Bot 350+ Commands",
+  "env": {
+    "PAIR_NUMBER": {
+      "description": "Your WhatsApp number with country code",
+      "value": "263716491962"
+    }
+  }
+}

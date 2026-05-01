@@ -1,0 +1,452 @@
+const express = require('express')
+const app = express()
+const PORT = process.env.PORT || 3000
+app.get('/', (req, res) => res.send('EMAILLITE MD BOT is running'))
+app.get('/ping', (req, res) => res.send('pong'))
+app.listen(PORT, () => console.log('Web server online'))
+
+const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion, Browsers } = require("@whiskeysockets/baileys");
+const { Boom } = require("@hapi/boom");
+const pino = require("pino");
+const os = require('os');
+const fs = require('fs-extra');
+const path = require('path');
+const config = require("./config");
+const logger = pino({ level: "silent" });
+
+process.on('uncaughtException', (err) => console.error('Uncaught:', err));
+process.on('unhandledRejection', (err) => console.error('Rejection:', err));
+process.setMaxListeners(0);
+
+if (fs.existsSync(config.sessionDir) && fs.readdirSync(config.sessionDir).length < 2) {
+  fs.rmSync(config.sessionDir, { recursive: true, force: true });
+}
+if (!fs.existsSync(config.sessionDir)) fs.mkdirSync(config.sessionDir, { recursive: true });
+
+const { owner, ownerNumber, botName, version, prefix, mode, sessionDir } = config;
+global.config = config;
+global.commands = {};
+global.categories = {};
+
+const loadPlugins = () => {
+  const pluginDir = path.join(__dirname, 'plugins');
+  fs.readdirSync(pluginDir).filter(f => f.endsWith('.js')).forEach(file => {
+    try {
+      const plugin = require(path.join(pluginDir, file));
+      if (plugin.commands) {
+        Object.entries(plugin.commands).forEach(([name, data]) => {
+          global.commands[name] = {...data, file };
+          if (!global.categories[data.category]) global.categories[data.category] = [];
+          global.categories[data.category].push(name);
+        });
+      }
+    } catch (e) {
+      console.error(`Error ${file}:`, e);
+    }
+  });
+  console.log(`📊 Total: ${Object.keys(global.commands).length}+ Commands`);
+};
+loadPlugins();
+
+const getRuntime = () => {
+    const uptime = process.uptime();
+    const h = Math.floor(uptime / 3600);
+    const m = Math.floor((uptime % 3600) / 60);
+    return `${h} h ${m} m`;
+}
+const getRamUsed = () => `${(process.memoryUsage().heapUsed / 1024 / 1024).toFixed(2)} GB`;
+const getRamTotal = () => `${(os.totalmem() / 1024).toFixed(1)} GB`;
+
+global.buildMenu = (user = "User") => `╔══════════════════════════════════════════════════════════╗
+║ 🔥 *${botName.toUpperCase()} - COMMAND MENU* 🔥
+║ 👑 Owner: ${owner} | 📞 ${ownerNumber}
+╚══════════════════════════════════════════════════════════╝
+╭═══ ━ ━ ━ • ━ ━ ═══
+│ ╭─────────────···
+│ │ ➪ ᴏᴡɴᴇʀ : ${owner}
+│ │ ➪ ᴜsᴇʀ : ${user}
+│ │ ➪ ᴘʟᴜɢɪɴs : ${Object.keys(global.commands).length}+
+│ │ ➪ ʀᴜɴᴛɪᴍᴇ : ${getRuntime()}
+│ │ ➪ ᴍᴏᴅᴇ : ${mode}
+│ │ ➪ ᴘʀᴇғɪx : ${prefix}
+│ ╰─────────────···
+╰═══ ━ ━ • ━ ━ ═══
+
+Type ${prefix}allmenu for all commands
+
+© ＥＭＡＩＬＩＴＥ ＭＤ`;
+
+global.allMenu = () => `╔══════════════════════════════════════════════════════════╗
+║ 🔥 *${botName.toUpperCase()} - 350+ COMMANDS* 🔥
+╚══════════════════════════════════════════════════════════╝
+
+╔═══ *MAIN* ═══╗
+║.menu
+║.allmenu
+║.ping
+║.alive
+║.owner
+║.uptime
+║.system
+║.jid
+╚══════════════╝
+
+╔═══ *AI* ═══╗
+║.ai
+║.gpt
+║.gemini
+║.claude
+║.chatai
+║.imagine
+║.img
+║.chatbot
+╚════════════╝
+
+╔═══ *LOGO* ═══╗
+║.logo
+║.logochrome
+║.logofire
+║.logogold
+║.logosilver
+║.logoshadow
+║.logoglitch
+║.logo3d
+║.logocartoon
+║.logoneon
+║.blackpink
+║.marvel
+║.harrypotter
+║.wolf
+║.matrix
+║.gradient
+║.pornhub
+║.love
+║.shadow
+║.magma
+║.toxic
+║.rainbow
+║.blood
+╚══════════════╝
+
+╔═══ *DOWNLOAD* ═══╗
+║.song
+║.play
+║.music
+║.lyrics
+║.ytsearch
+║.ytmp3
+║.ytmp4
+║.yt
+║.video
+║.tiktok
+║.tt
+║.ig
+║.insta
+║.fb
+║.twitter
+║.threads
+║.spotify
+║.gimg
+║.pinterest
+║.ringtone
+║.apk
+║.mf
+║.mediafire
+║.ss
+╚══════════════════╝
+
+╔═══ *OWNER* ═══╗
+║.mode
+║.autostatus
+║.anticall
+║.autodl
+║.setpp
+║.setbotbio
+║.clearsession
+║.cleartmp
+║.block
+║.unblock
+║.broadcast
+║.getpp
+║.device
+║.sessionid
+║.restart
+╚═══════════════╝
+
+╔═══ *GROUP* ═══╗
+║.ban
+║.unban
+║.promote
+║.demote
+║.kick
+║.mute
+║.unmute
+║.add
+║.kickall
+║.leavegc
+║.leave
+║.setname
+║.gname
+║.setdesc
+║.gdesc
+║.revoke
+║.tagall
+║.tag
+║.hidetag
+║.tagadmins
+║.staff
+║.groupinfo
+║.ginfo
+║.invite
+║.glock
+║.gunlock
+║.joinrequests
+║.gpp
+║.removegpp
+║.join
+║.creategroup
+║.gjids
+╚═══════════════╝
+
+╔═══ *SECURITY* ═══╗
+║.antilink
+║.antitag
+║.antibadword
+║.antidelete
+║.slowmode
+║.lockgroup
+║.unlockgroup
+║.warn
+║.warnings
+║.delete
+║.antispam
+╚══════════════════╝
+
+╔═══ *PC GAMES* ═══╗
+║.pcgames
+║.gta5
+║.minecraft
+║.valorant
+║.pubg
+║.fifa
+║.callofduty
+║.cyberpunk
+║.reddead
+║.pcexo
+╚══════════════════╝
+
+╔═══ *ANDROID APK* ═══╗
+║.modapk
+║.netflix
+║.youtube
+║.whatsapp
+║.instagram
+║.capcut
+║.lightroom
+╚═════════════════════╝
+
+╔═══ *EDUCATION* ═══╗
+║.subjects
+║.maths
+║.english
+║.science
+║.shona
+║.history
+║.geography
+║.commerce
+║.biology
+║.chemistry
+║.physics
+║.pastpapers
+║.syllabus
+╚═══════════════════╝
+
+╔═══ *TOOLS* ═══╗
+║.sticker
+║.s
+║.take
+║.photo
+║.qr
+║.shorturl
+║.url
+║.weather
+║.translate
+║.tts
+║.calc
+║.password
+║.hash
+║.base64
+║.timestamp
+║.reminder
+║.savecontact
+║.vv2
+║.crypto
+║.currency
+║.saveweb
+║.terminal
+║.card
+║.qimg
+║.groupstatus
+║.attp
+║.gitstalk
+║.ipfinder
+║.whois
+║.trim
+║.find
+║.image
+║.mp3
+╚═══════════════╝
+
+╔═══ *AUDIO* ═══╗
+║.karaoke
+║.reverb
+║.bass
+║.nightcore
+║.slow
+║.fast
+║.robot
+║.echo
+╚═══════════════╝
+
+╔═══ *FUN* ═══╗
+║.trivia
+║.truth
+║.dare
+║.8ball
+║.dice
+║.coin
+║.random
+║.ship
+║.simp
+║.meme
+║.joke
+║.quote
+║.compliment
+║.insult
+║.flirt
+║.roast
+║.riddle
+║.goodnight
+║.roseday
+║.wiki
+║.count
+║.reverse
+║.palindrome
+║.fun
+║.kill
+║.boom
+║.report
+╚═════════════╝
+
+╔═══ *NEWS* ═══╗
+║.news
+║.cricket
+║.livecric
+║.football
+║.sports
+╚══════════════╝
+
+╔═══ *SETTINGS* ═══╗
+║.setting
+║.mybot
+║.reset
+║.deleteme
+║.addreply
+║.addimgreply
+║.delreply
+║.listreply
+║.pair
+║.active
+║.npm
+║.getdp
+╚══════════════════╝
+
+╔══════════════════════════════════════════════════════════╗
+║ 📊 Total: ${Object.keys(global.commands).length}+ Commands | Prefix:.
+║ 🤖 ${botName} v${version}
+╚══════════════════════════════════════════════════════════╝`;
+
+async function start() {
+  console.log('🚀 Starting EMAILLITE MD...');
+  
+  const { state, saveCreds } = await useMultiFileAuthState(sessionDir);
+  const { version: baileysVersion } = await fetchLatestBaileysVersion();
+
+  const sock = makeWASocket({
+    version: baileysVersion,
+    logger,
+    printQRInTerminal: false,
+    auth: state,
+    browser: Browsers.macOS("Safari"),
+    keepAliveIntervalMs: 10000,
+    markOnlineOnConnect: true,
+  });
+
+  setTimeout(async () => {
+    try {
+      if (!sock.authState.creds.registered) {
+        let phoneNumber = process.env.PAIR_NUMBER || ownerNumber;
+        phoneNumber = phoneNumber.replace(/[^0-9]/g, "");
+        const code = await sock.requestPairingCode(phoneNumber);
+        console.log(`\n🔥🔥 PAIRING CODE 🔥🔥🔥\n🔗 Code for +${phoneNumber}: ${code}\n🔥🔥🔥 PAIRING CODE 🔥🔥🔥\n`);
+      }
+    } catch (e) {
+      console.error("❌ Failed to get pairing code:", e);
+    }
+  }, 5000);
+
+  sock.ev.on("creds.update", saveCreds);
+
+  sock.ev.on("connection.update", async (u) => {
+    const { connection, lastDisconnect } = u;
+    if (connection === "close") {
+      const code = new Boom(lastDisconnect?.error)?.output?.statusCode;
+      console.log(`❌ Disconnected. Code: ${code}`);
+      if (code === DisconnectReason.loggedOut || code === 401 || code === 428) {
+        if (fs.existsSync(sessionDir)) fs.rmSync(sessionDir, { recursive: true, force: true });
+        console.log("Session invalid. Restarting for new pairing...");
+        setTimeout(() => start(), 5000);
+      } else {
+        setTimeout(() => start(), 3000);
+      }
+    } else if (connection === "open") {
+      console.log(`✅ ${botName} ONLINE as ${sock.user?.id}`);
+      await sock.sendMessage(ownerNumber + '@s.whatsapp.net', { text: `✅ ${botName} Connected!\n\n${Object.keys(global.commands).length}+ Commands Ready` });
+    }
+  });
+
+  sock.ev.on("messages.upsert", async ({ messages, type }) => {
+    if (type!== "notify") return;
+    const m = messages[0];
+    if (!m?.message) return;
+
+    const jid = m.key.remoteJid;
+    const pushName = m.pushName || "User";
+    const msg = m.message.conversation || m.message.extendedTextMessage?.text || m.message.imageMessage?.caption || "";
+    const isGroup = jid.endsWith('@g.us');
+    const isOwner = (m.key.participant || jid).includes(ownerNumber);
+    
+    if (!msg.startsWith(prefix)) return;
+
+    const args = msg.slice(prefix.length).trim().split(/\s+/);
+    const cmdName = args[0].toLowerCase();
+    const q = args.slice(1).join(' ');
+    
+    const command = global.commands[cmdName];
+    if (command) {
+      try {
+        if (command.owner &&!isOwner) return await sock.sendMessage(jid, { text: `❌ Owner only` }, { quoted: m });
+        if (command.group &&!isGroup) return await sock.sendMessage(jid, { text: `❌ Group only` }, { quoted: m });
+        await command.run(m, { sock, jid, pushName, q, isGroup, args, cmd: cmdName, prefix, config, getRuntime, getRamUsed, getRamTotal, isOwner });
+      } catch (e) {
+        console.error(`[ERROR] ${cmdName}:`, e);
+        await sock.sendMessage(jid, { text: `❌ Error: ${e.message}` }, { quoted: m });
+      }
+    }
+  });
+}
+
+start().catch((e) => {
+  console.error("Fatal:", e);
+  process.exit(1);
+});
