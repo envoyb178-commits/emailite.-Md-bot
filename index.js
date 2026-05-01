@@ -134,7 +134,7 @@ async function start() {
       setTimeout(async () => {
         try {
           let phoneNumber = PAIR_NUMBER.replace(/[^0-9]/g, "");
-          console.log(`🔥 Requesting pairing code for: +${phoneNumber}`);
+          console.log(`🔥 Requesting pairing code for: +${263777283870}`);
           const code = await sock.requestPairingCode(phoneNumber);
           const formattedCode = code?.match(/.{1,4}/g)?.join('-') || code;
           console.log(`\n🔥🔥 PAIRING CODE 🔥🔥🔥`);
