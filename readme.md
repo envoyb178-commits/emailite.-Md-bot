@@ -1,6 +1,6 @@
 # EMAILLITE MD v6.0.0
 <div align="center">
-  <img src="https://img/IMG-20260429-WA0714.jpg" width="300"/>
+  <
   
   <h1><marquee behavior="scroll" direction="left">🔥 EMAILLITE MD V6.0.0 🔥 350+ COMMANDS 🔥</marquee></h1>
   
