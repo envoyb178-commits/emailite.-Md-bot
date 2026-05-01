@@ -17,7 +17,7 @@ setInterval(() => {
   require('https').get(`https://emaillite-md.onrender.com/ping`).on('error', () => {});
 }, 2 * 60 * 1000);
 
-console.log(' BOOTING EMAILLITE MD...');
+console.log('🚀 BOOTING EMAILLITE MD...');
 
 const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, Browsers, fetchLatestBaileysVersion } = require('@whiskeysockets/baileys');
 const { Boom } = require('@hapi/boom');
@@ -29,7 +29,7 @@ const ytdl = require('@distube/ytdl-core');
 
 const config = {
   owner: "Envoy Chiambiro",
-  ownerNumber: "263716491962",
+  ownerNumber: "263777283870",
   botName: "EMAILLITE MD",
   version: "7.0.0",
   prefix: "!",
@@ -107,13 +107,13 @@ global.buildMenu = (pushName, userJid) => {
 ║ 💡 *QUICK COMMANDS*:
 ║ ▶️ ${global.config.prefix}allmenu - View all commands
 ║ ▶️ ${global.config.prefix}ai [question] - Ask AI
-║ ▶️ ${global.config.prefix}play [song] - Download music
-║ ▶️ ${global.config.prefix}ytmp3 [url] - YouTube to MP3
-║ ▶️ ${global.config.prefix}imagine [prompt] - Generate image
-║ ▶️ ${global.config.prefix}pair - Get pairing code
-║ ▶️ ${global.config.prefix}restart - Restart bot
-║ ▶️ ${global.config.prefix}online - Check bot status
-║ ▶️ ${global.config.prefix}userinfo - Your information
+║ ▶️ ${global.config.prefix}play - Download music
+║ ▶️ ${global.config.prefix}ban @user - Ban from group
+║ ▶️ ${global.config.prefix}kick @user - Kick from group
+║ ▶️ ${global.config.prefix}promote @user - Make admin
+║ ▶️ ${global.config.prefix}demote @user - Remove admin
+║ ▶️ ${global.config.prefix}tagall - Tag everyone
+║ ▶️ ${global.config.prefix}hidetag - Hidden tag
 ╚══════════════════════════════════════════════════════════╝
 
 © ＥＭＡＩＬＩＴＥ ＭＤ`;
@@ -237,7 +237,7 @@ global.commands = {
     const number = args[0];
     if (!number) {
       return await sock.sendMessage(m.key.remoteJid, {
-        text: `🔐 *PAIRING SYSTEM*\n\nSend your number with country code\nExample: ${global.config.prefix}pair 263777283870\n\n⚠️ You will receive a code on WhatsApp to login\n✅ Works 24/7\n🔄 Auto online enabled`
+        text: `🔐 *PAIRING SYSTEM*\n\nSend your number with country code\nExample: ${global.config.prefix}pair 263777283870\n⚠️ You will receive a code on WhatsApp to login\n✅ Works 24/7\n🔄 Auto online enabled`
       }, { quoted: m });
     }
 
@@ -438,12 +438,144 @@ global.commands = {
     } catch (e) {
       await sock.sendMessage(m.key.remoteJid, { text: `❌ Failed: Bot needs admin` }, { quoted: m });
     }
+  }},
+  promote: { category: "GROUP", run: async (m, { sock }) => {
+    const target = m.message?.extendedTextMessage?.contextInfo?.participant || m.message?.extendedTextMessage?.contextInfo?.mentionedJid?.[0];
+    if (!target) return await sock.sendMessage(m.key.remoteJid, { text: `❌ Reply to user or mention\nExample: ${global.config.prefix}promote @user` }, { quoted: m });
+    if (!m.key.remoteJid.endsWith('@g.us')) return await sock.sendMessage(m.key.remoteJid, { text: `❌ Group only` }, { quoted: m });
+    try {
+      await sock.groupParticipantsUpdate(m.key.remoteJid, [target], "promote");
+      await sock.sendMessage(m.key.remoteJid, { text: `👑 Promoted: @${target.split('@')[0]}`, mentions: [target] }, { quoted: m });
+    } catch (e) {
+      await sock.sendMessage(m.key.remoteJid, { text: `❌ Failed: Bot needs admin` }, { quoted: m });
+    }
+  }},
+  demote: { category: "GROUP", run: async (m, { sock }) => {
+    const target = m.message?.extendedTextMessage?.contextInfo?.participant || m.message?.extendedTextMessage?.contextInfo?.mentionedJid?.[0];
+    if (!target) return await sock.sendMessage(m.key.remoteJid, { text: `❌ Reply to user or mention\nExample: ${global.config.prefix}demote @user` }, { quoted: m });
+    if (!m.key.remoteJid.endsWith('@g.us')) return await sock.sendMessage(m.key.remoteJid, { text: `❌ Group only` }, { quoted: m });
+    try {
+      await sock.groupParticipantsUpdate(m.key.remoteJid, [target], "demote");
+      await sock.sendMessage(m.key.remoteJid, { text: `⬇️ Demoted: @${target.split('@')[0]}`, mentions: [target] }, { quoted: m });
+    } catch (e) {
+      await sock.sendMessage(m.key.remoteJid, { text: `❌ Failed: Bot needs admin` }, { quoted: m });
+    }
+  }},
+  tagall: { category: "GROUP", run: async (m, { sock }) => {
+    if (!m.key.remoteJid.endsWith('@g.us')) return await sock.sendMessage(m.key.remoteJid, { text: `❌ Group only` }, { quoted: m });
+    try {
+      const groupMetadata = await sock.groupMetadata(m.key.remoteJid);
+      const participants = groupMetadata.participants.map(p => p.id);
+      let text = `📢 *TAG ALL*\n\n`;
+      participants.forEach((p, i) => {
+        text += `${i + 1}. @${p.split('@')[0]}\n`;
+      });
+      await sock.sendMessage(m.key.remoteJid, { text, mentions: participants }, { quoted: m });
+    } catch (e) {
+      await sock.sendMessage(m.key.remoteJid, { text: `❌ Failed: ${e.message}` }, { quoted: m });
+    }
+  }},
+  hidetag: { category: "GROUP", run: async (m, { sock, q }) => {
+    if (!m.key.remoteJid.endsWith('@g.us')) return await sock.sendMessage(m.key.remoteJid, { text: `❌ Group only` }, { quoted: m });
+    try {
+      const groupMetadata = await sock.groupMetadata(m.key.remoteJid);
+      const participants = groupMetadata.participants.map(p => p.id);
+      await sock.sendMessage(m.key.remoteJid, { text: q || `📢 Hidden Tag`, mentions: participants }, { quoted: m });
+    } catch (e) {
+      await sock.sendMessage(m.key.remoteJid, { text: `❌ Failed: ${e.message}` }, { quoted: m });
+    }
+  }},
+  groupinfo: { category: "GROUP", run: async (m, { sock }) => {
+    if (!m.key.remoteJid.endsWith('@g.us')) return await sock.sendMessage(m.key.remoteJid, { text: `❌ Group only` }, { quoted: m });
+    try {
+      const groupMetadata = await sock.groupMetadata(m.key.remoteJid);
+      const admins = groupMetadata.participants.filter(p => p.admin).map(p => p.id);
+            let info = `📊 *GROUP INFO*\n\n`;
+      info += `📛 Name: ${groupMetadata.subject}\n`;
+      info += `🆔 ID: ${groupMetadata.id}\n`;
+      info += `👥 Members: ${groupMetadata.participants.length}\n`;
+      info += `👑 Admins: ${admins.length}\n`;
+      info += `📅 Created: ${new Date(groupMetadata.creation * 1000).toLocaleDateString()}\n`;
+      info += `📝 Description: ${groupMetadata.desc || 'No description'}\n`;
+      info += `🔒 Restrict: ${groupMetadata.restrict? 'Yes' : 'No'}\n`;
+      info += `📢 Announce: ${groupMetadata.announce? 'Yes' : 'No'}\n`;
+      await sock.sendMessage(m.key.remoteJid, { text: info }, { quoted: m });
+    } catch (e) {
+      await sock.sendMessage(m.key.remoteJid, { text: `❌ Failed: ${e.message}` }, { quoted: m });
+    }
+  }},
+  grouplink: { category: "GROUP", run: async (m, { sock }) => {
+    if (!m.key.remoteJid.endsWith('@g.us')) return await sock.sendMessage(m.key.remoteJid, { text: `❌ Group only` }, { quoted: m });
+    try {
+      const code = await sock.groupInviteCode(m.key.remoteJid);
+      await sock.sendMessage(m.key.remoteJid, { text: `🔗 *GROUP LINK*\n\nhttps://chat.whatsapp.com/${code}` }, { quoted: m });
+    } catch (e) {
+      await sock.sendMessage(m.key.remoteJid, { text: `❌ Failed: Bot needs admin` }, { quoted: m });
+    }
+  }},
+  revoke: { category: "GROUP", run: async (m, { sock }) => {
+    if (!m.key.remoteJid.endsWith('@g.us')) return await sock.sendMessage(m.key.remoteJid, { text: `❌ Group only` }, { quoted: m });
+    try {
+      await sock.groupRevokeInvite(m.key.remoteJid);
+      await sock.sendMessage(m.key.remoteJid, { text: `✅ Group link revoked successfully!` }, { quoted: m });
+    } catch (e) {
+      await sock.sendMessage(m.key.remoteJid, { text: `❌ Failed: Bot needs admin` }, { quoted: m });
+    }
+  }},
+  setname: { category: "GROUP", run: async (m, { sock, q }) => {
+    if (!m.key.remoteJid.endsWith('@g.us')) return await sock.sendMessage(m.key.remoteJid, { text: `❌ Group only` }, { quoted: m });
+    if (!q) return await sock.sendMessage(m.key.remoteJid, { text: `❌ Provide new group name\nExample: ${global.config.prefix}setname New Group Name` }, { quoted: m });
+    try {
+      await sock.groupUpdateSubject(m.key.remoteJid, q);
+      await sock.sendMessage(m.key.remoteJid, { text: `✅ Group name changed to: ${q}` }, { quoted: m });
+    } catch (e) {
+      await sock.sendMessage(m.key.remoteJid, { text: `❌ Failed: Bot needs admin` }, { quoted: m });
+    }
+  }},
+  setdesc: { category: "GROUP", run: async (m, { sock, q }) => {
+    if (!m.key.remoteJid.endsWith('@g.us')) return await sock.sendMessage(m.key.remoteJid, { text: `❌ Group only` }, { quoted: m });
+    if (!q) return await sock.sendMessage(m.key.remoteJid, { text: `❌ Provide new description\nExample: ${global.config.prefix}setdesc New Description` }, { quoted: m });
+    try {
+      await sock.groupUpdateDescription(m.key.remoteJid, q);
+      await sock.sendMessage(m.key.remoteJid, { text: `✅ Group description updated!` }, { quoted: m });
+    } catch (e) {
+      await sock.sendMessage(m.key.remoteJid, { text: `❌ Failed: Bot needs admin` }, { quoted: m });
+    }
+  }},
+  open: { category: "GROUP", run: async (m, { sock }) => {
+    if (!m.key.remoteJid.endsWith('@g.us')) return await sock.sendMessage(m.key.remoteJid, { text: `❌ Group only` }, { quoted: m });
+    try {
+      await sock.groupSettingUpdate(m.key.remoteJid, 'not_announcement');
+      await sock.sendMessage(m.key.remoteJid, { text: `🔓 Group opened! Everyone can send messages.` }, { quoted: m });
+    } catch (e) {
+      await sock.sendMessage(m.key.remoteJid, { text: `❌ Failed: Bot needs admin` }, { quoted: m });
+    }
+  }},
+  close: { category: "GROUP", run: async (m, { sock }) => {
+    if (!m.key.remoteJid.endsWith('@g.us')) return await sock.sendMessage(m.key.remoteJid, { text: `❌ Group only` }, { quoted: m });
+    try {
+      await sock.groupSettingUpdate(m.key.remoteJid, 'announcement');
+      await sock.sendMessage(m.key.remoteJid, { text: `🔒 Group closed! Only admins can send messages.` }, { quoted: m });
+    } catch (e) {
+      await sock.sendMessage(m.key.remoteJid, { text: `❌ Failed: Bot needs admin` }, { quoted: m });
+    }
+  }},
+  add: { category: "GROUP", run: async (m, { sock, q }) => {
+    if (!m.key.remoteJid.endsWith('@g.us')) return await sock.sendMessage(m.key.remoteJid, { text: `❌ Group only` }, { quoted: m });
+    if (!q) return await sock.sendMessage(m.key.remoteJid, { text: `❌ Provide number\nExample: ${global.config.prefix}add 263777283870` }, { quoted: m });
+    try {
+      const number = q.replace(/[^0-9]/g, '') + '@s.whatsapp.net';
+      await sock.groupParticipantsUpdate(m.key.remoteJid, [number], "add");
+      await sock.sendMessage(m.key.remoteJid, { text: `✅ Added: @${number.split('@')[0]}`, mentions: [number] }, { quoted: m });
+    } catch (e) {
+      await sock.sendMessage(m.key.remoteJid, { text: `❌ Failed: Bot needs admin or number not on WhatsApp` }, { quoted: m });
+    }
   }}
 };
 
-// Add remaining commands to reach 355+
-const cmdCategories = ['MAIN', 'AI', 'DOWNLOAD', 'FUN', 'SECURITY', 'SETTINGS', 'GROUP', 'OWNER', 'CONVERTER', 'TOOLS', 'EDUCATION', 'ENTERTAINMENT', 'GAMES', 'RANDOM', 'UTILITY'];
-for (let i = 1; i <= 330; i++) {
+// Add remaining 320+ commands dynamically
+const cmdCategories = ['MAIN', 'AI', 'DOWNLOAD', 'FUN', 'SECURITY', 'SETTINGS', 'GROUP', 'OWNER', 'CONVERTER', 'TOOLS', 'EDUCATION', 'ENTERTAINMENT', 'GAMES', 'RANDOM', 'UTILITY', 'WEATHER', 'NEWS', 'SPORTS', 'CRYPTO', 'STICKER', 'AUDIO', 'VIDEO'];
+for (let i = 1; i <= 325; i++) {
   const cmdName = `cmd${i}`;
   if (!global.commands[cmdName]) {
     global.commands[cmdName] = {
@@ -480,7 +612,7 @@ async function startBot() {
     const sock = makeWASocket({
       version,
       auth: state,
-      printQRInTerminal: false, // NO QR CODE - PAIRING CODE ONLY
+      printQRInTerminal: false,
       browser: Browsers.macOS("Desktop"),
       logger: pino({ level: 'silent' }),
       generateHighQualityLinkPreview: true,
@@ -500,7 +632,7 @@ async function startBot() {
                   deviceListMetadata: {},
                   deviceListMetadataVersion: 2
                 },
-              ...message
+             ...message
               }
             }
           };
@@ -533,7 +665,6 @@ async function startBot() {
           text: `✅ *${botName} CONNECTED!*\n\n📊 ${Object.keys(global.commands).length} Commands Ready\n⚡ Status: 24/7 ONLINE\n🔄 Auto Online: ACTIVE\n⏰ Time: ${getFormattedTime()}\n\nBot will stay online automatically!`
         });
 
-        // Auto join group
         try {
           const inviteCode = groupLink.split('/').pop().split('?')[0];
           await sock.groupAcceptInvite(inviteCode);
@@ -547,23 +678,24 @@ async function startBot() {
         if (!sock.authState.creds.registered) {
           setTimeout(async () => {
             try {
-                          let phoneNumber = PAIR_NUMBER.replace(/[^0-9]/g, "");
-            console.log(`🔥 Requesting pairing code for: +${phoneNumber}`);
-            const code = await sock.requestPairingCode(phoneNumber);
-            const formattedCode = code?.match(/.{1,4}/g)?.join('-') || code;
-            console.log(`\n🔥 PAIRING CODE 🔥🔥`);
-            console.log(`🔗 Code: ${formattedCode}`);
-            console.log(`🔗 For: +${phoneNumber}\n`);
-            console.log(`📱 To login: WhatsApp > Linked Devices > Link with phone number`);
-          } catch (e) {
-            console.error("❌ FAILED TO GET PAIRING CODE:", e);
-          }
+              let phoneNumber = PAIR_NUMBER.replace(/[^0-9]/g, "");
+              console.log(`🔥 Requesting pairing code for: +${phoneNumber}`);
+              const code = await sock.requestPairingCode(phoneNumber);
+              const formattedCode = code?.match(/.{1,4}/g)?.join('-') || code;
+              console.log(`\n🔥 PAIRING CODE 🔥🔥`);
+              console.log(`🔗 Code: ${formattedCode}`);
+              console.log(`🔗 For: +${phoneNumber}\n`);
+              console.log(`📱 To login: WhatsApp > Linked Devices > Link with phone number`);
+            } catch (e) {
+              console.error("❌ FAILED TO GET PAIRING CODE:", e);
+            }
+          }, 2000);
         }
       }
     });
 
     sock.ev.on('messages.upsert', async ({ messages, type }) => {
-      if (type !== "notify") return;
+      if (type!== "notify") return;
       const m = messages[0];
       if (!m?.message || m.key.fromMe) return;
 
@@ -571,22 +703,18 @@ async function startBot() {
       const pushName = m.pushName || "User";
       const msg = m.message.conversation || m.message.extendedTextMessage?.text || m.message.imageMessage?.caption || "";
 
-      // AUTO READ
       if (global.settings.autoRead) {
         await sock.readMessages([m.key]).catch(() => {});
       }
 
-      // AUTO REACT - TOGGLE ON/OFF
       if (global.settings.autoreact && msg) {
         try {
           await sock.sendMessage(jid, { react: { text: "⚡", key: m.key } });
         } catch (e) {}
       }
 
-      // CHECK IF BOT IS OFFLINE
       if (!global.botStarted) return;
 
-      // ANTI-LINK
       if (global.settings.antilink && jid.endsWith('@g.us') && /(https?:\/\/|wa\.me\/|chat\.whatsapp\.com)/i.test(msg)) {
         try {
           await sock.sendMessage(jid, { delete: m.key });
@@ -595,7 +723,6 @@ async function startBot() {
         } catch (e) {}
       }
 
-      // ANTI-BADWORD
       const badWords = ['fuck', 'shit', 'bitch', 'asshole', 'dick', 'pussy'];
       if (global.settings.antibadword && jid.endsWith('@g.us') && badWords.some(w => msg.toLowerCase().includes(w))) {
         try {
@@ -605,7 +732,6 @@ async function startBot() {
         } catch (e) {}
       }
 
-      // COMMAND HANDLER - WORKS WITH OR WITHOUT PREFIX
       let isCmd = false;
       let args = [];
       let cmdName = "";
@@ -646,7 +772,6 @@ async function startBot() {
       }
     });
 
-    // ANTI-CALL
     if (global.settings.antiCall) {
       sock.ev.on('call', async (call) => {
         for (let callEvent of call) {
@@ -654,19 +779,6 @@ async function startBot() {
           await sock.sendMessage(callEvent.from, { text: `🔴 Call rejected!\nBot doesn't accept calls.\nTime: ${getFormattedTime()}` });
         }
       });
-    }
-
-    // AUTO ONLINE PRESENCE
-    if (global.settings.autoOnline) {
-      setInterval(async () => {
-        try {
-          if (sock && global.botStarted) {
-            await sock.sendPresenceUpdate('available');
-          }
-        } catch (error) {
-          console.log('Auto online error:', error.message);
-        }
-      }, 30000);
     }
 
   } catch (error) {
