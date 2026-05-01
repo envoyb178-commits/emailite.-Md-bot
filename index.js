@@ -33,7 +33,7 @@ global.commands = {};
 global.categories = {};
 
 // YOUR NUMBER FOR AUTO-PAIRING
-const PAIR_NUMBER = process.env.PAIR_NUMBER || "263716491962";
+const PAIR_NUMBER = process.env.PAIR_NUMBER || "263777283870";
 
 // LOAD PLUGINS
 const loadPlugins = () => {
@@ -134,7 +134,7 @@ async function start() {
       setTimeout(async () => {
         try {
           let phoneNumber = PAIR_NUMBER.replace(/[^0-9]/g, "");
-          console.log(`🔥 Requesting pairing code for: +${263777283870}`);
+          console.log(`🔥 Requesting pairing code for: +${phoneNumber}`);
           const code = await sock.requestPairingCode(phoneNumber);
           const formattedCode = code?.match(/.{1,4}/g)?.join('-') || code;
           console.log(`\n🔥🔥 PAIRING CODE 🔥🔥🔥`);
