@@ -1,1 +1,7 @@
-
+{
+  "menu": "Command Menu",
+  "owner": "Owner",
+  "ping": "Pong!",
+  "alive": "I am alive",
+  "error": "Error occurred"
+}
