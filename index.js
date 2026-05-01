@@ -29,7 +29,7 @@ const ytdl = require('@distube/ytdl-core');
 
 const config = {
   owner: "Envoy Chiambiro",
-  ownerNumber: "263777283870",
+  ownerNumber: "263716491962",
   botName: "EMAILLITE MD",
   version: "7.0.0",
   prefix: "!",
