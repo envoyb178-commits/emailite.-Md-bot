@@ -4,7 +4,7 @@ const PORT = process.env.PORT || 3000;
 
 app.get('/', (req, res) => res.send('EMAILLITE MD BOT - 24/7 ONLINE'));
 app.get('/ping', (req, res) => res.send('pong'));
-app.listen(PORT, () => console.log(`✅ Web server online on port ${PORT}`));
+app.listen(PORT, () => console.log(` Web server online on port ${PORT}`));
 
 // SELF PING - KEEPS BOT ALIVE 24/7 ON RENDER
 setInterval(() => {
