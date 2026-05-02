@@ -3,7 +3,7 @@ const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, Browsers
 const pino = require('pino');
 const fs = require('fs-extra');
 // ... rest of requires
-const express = require('express');
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
