@@ -21,8 +21,7 @@ process.on('uncaughtException', (err) => console.log('Caught:', err.message));
 process.on('unhandledRejection', (err) => console.log('Rejection:', err.message));
 
 
-const pino = require('pino');
-const fs = require('fs-extra');
+
 const path = require('path');
 const axios = require('axios');
 const ytdl = require('@distube/ytdl-core');
