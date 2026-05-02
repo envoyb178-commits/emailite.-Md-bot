@@ -1,4 +1,9 @@
 const express = require('express');
+const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, Browsers, fetchLatestBaileysVersion } = require('@whiskeysockets/baileys');
+const pino = require('pino');
+const fs = require('fs-extra');
+// ... rest of requires
+const express = require('express');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -15,7 +20,7 @@ setInterval(() => require('http').get(`http://localhost:${PORT}/ping`).on('error
 process.on('uncaughtException', (err) => console.log('Caught:', err.message));
 process.on('unhandledRejection', (err) => console.log('Rejection:', err.message));
 
-const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, Browsers, fetchLatestBaileysVersion, generateProfilePicture } = require('@whiskeysockets/baileys');
+
 const pino = require('pino');
 const fs = require('fs-extra');
 const path = require('path');
