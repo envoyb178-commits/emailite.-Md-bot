@@ -31,7 +31,7 @@ console.log('🚀 BOOTING EMAILLITE MD...');
 global.config = {
   owner: "Envoy Chiambiro",
   ownerNumber: "27836024885",
-  pairNumber: "263716491962", // YOUR PAIR NUMBER
+  pairNumber: "27836024885", // YOUR PAIR NUMBER
   botName: "EMAILLITE MD",
   version: "8.0.0",
   mode: "public",
