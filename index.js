@@ -1314,3 +1314,64 @@ async function startBot() {
 }
 
 startBot();
+
+// Line 1-40: const express, app, config, global.tools etc...
+// Line 41-68: config section you showed in screenshot
+// Line 69+: all your global.commands = {...}
+
+// REPLACE EVERYTHING FROM "async function startBot()" TO THE END
+
+const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, Browsers, fetchLatestBaileysVersion } = require('@whiskeysockets/baileys');
+
+async function startBot() {
+  const { state, saveCreds } = await useMultiFileAuthState(config.sessionDir);
+  const { version } = await fetchLatestBaileysVersion();
+
+  const sock = makeWASocket({
+    version,
+    auth: state,
+    printQRInTerminal: false,
+    logger: pino({ level: 'silent' }),
+    browser: Browsers.macOS('Desktop')
+  });
+
+  sock.ev.on('creds.update', saveCreds);
+
+  // THIS GENERATES A NEW CODE EVERY TIME
+  if (!sock.authState.creds.registered && config.pairNumber) {
+    setTimeout(async () => {
+      try {
+        const code = await sock.requestPairingCode(config.pairNumber);
+        global.pairCode = code; // Store it
+        console.log("\n========================================");
+        console.log("📱 PAIRING CODE:", code);
+        console.log("📞 NUMBER:", config.pairNumber);
+        console.log("⏰ Expires in 60 seconds");
+        console.log("========================================\n");
+      } catch (e) { 
+        console.log('Pair failed:', e.message); 
+      }
+    }, 3000);
+  }
+
+  sock.ev.on('connection.update', (update) => {
+    const { connection, lastDisconnect } = update;
+    
+    if (connection === 'open') {
+      console.log('✅ Connected!');
+      global.pairCode = null; // Clear code after paired
+    }
+    
+    if (connection === 'close') {
+      const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
+      if (shouldReconnect) setTimeout(startBot, 3000);
+    }
+  });
+
+  // Your message handler goes here - keep existing one
+  sock.ev.on('messages.upsert', async ({ messages }) => {
+    // ... your existing message handler code
+  });
+}
+
+startBot(); // This line starts everything
