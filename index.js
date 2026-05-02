@@ -54,7 +54,7 @@ const safeMath = (expression) => {
   try {
     if (!/^[\d\s+\-*/()%\.]+$/.test(expression)) return "Invalid expression";
     const result = Function('"use strict"; return (' + expression + ')')();
-    return isNaN(result) ? "Invalid calculation" : result;
+    return isNaN(result)? "Invalid calculation" : result;
   } catch {
     return "Invalid calculation";
   }
@@ -75,7 +75,7 @@ global.commands.ping = { category: "MAIN", run: async (m, { sock }) => {
   await sock.sendMessage(m.key.remoteJid, { text: `🏓 Pong! ${Date.now() - s}ms` }, { quoted: m });
 }};
 global.commands.alive = { category: "MAIN", run: async (m, { sock }) => {
-  await sock.sendMessage(m.key.remoteJid, { text: `✅ ${config.botName} Alive!\n📊 Commands: ${Object.keys(global.commands).length}\n⏰ Uptime: ${getRuntime()}\n🤖 AI Mode: ${config.aiChat ? 'ON' : 'OFF'}` }, { quoted: m });
+  await sock.sendMessage(m.key.remoteJid, { text: `✅ ${config.botName} Alive!\n📊 Commands: ${Object.keys(global.commands).length}\n⏰ Uptime: ${getRuntime()}\n🤖 AI Mode: ${config.aiChat? 'ON' : 'OFF'}` }, { quoted: m });
 }};
 global.commands.uptime = { category: "MAIN", run: async (m, { sock }) => {
   await sock.sendMessage(m.key.remoteJid, { text: `⏰ Uptime: ${getRuntime()}` }, { quoted: m });
@@ -97,7 +97,7 @@ global.commands.menu = { category: "MAIN", run: async (m, { sock }) => {
   }
   let text = `📋 *${config.botName} MENU* - ${Object.keys(global.commands).length} Commands\n`;
   for (const [cat, cmds] of Object.entries(cats).sort()) {
-    text += `\n*${cat}*\n${cmds.slice(0, 8).join(", ")}${cmds.length > 8 ? "..." : ""}\n`;
+    text += `\n*${cat}*\n${cmds.slice(0, 8).join(", ")}${cmds.length > 8? "..." : ""}\n`;
   }
   text += `\nType any command directly - no prefix\nExample: ping, chartai, ban @user`;
   await sock.sendMessage(m.key.remoteJid, { text }, { quoted: m });
@@ -230,38 +230,21 @@ global.commands.copilot = { category: "AI", run: async (m, { sock, q }) => {
   }
 }};
 
-// DOWNLOAD - 24
+// DOWNLOAD 24 - STOPPING HERE AS REQUESTED
 global.commands.song = { category: "DOWNLOAD", run: async (m, { sock, q }) => {
-  if (!q) return sock.sendMessage(m.key.remoteJid, { text: `🎵 *SONG DOWNLOAD*\n\nExample: song unity alan walker` }, { quoted: m });
+  if (!q) return sock.sendMessage(m.key.remoteJid, { text: `❌ Song name?\nExample: song despacito` }, { quoted: m });
   try {
-    await sock.sendMessage(m.key.remoteJid, { text: `🔍 Searching: *${q}*...` }, { quoted: m });
+    await sock.sendMessage(m.key.remoteJid, { text: `🔍 Searching: ${q}` }, { quoted: m });
     const search = await yts(q);
-    if (!search.videos.length) return sock.sendMessage(m.key.remoteJid, { text: `❌ No results found for "${q}"` }, { quoted: m });
-    
-    const video = search.videos[0];
-    const res = await axios.get(`https://api.ryzendesu.vip/api/downloader/ytmp3?url=${video.url}`);
-    
-    await sock.sendMessage(m.key.remoteJid, { 
-      audio: { url: res.data.url }, 
-      mimetype: 'audio/mpeg', 
-      fileName: `${video.title}.mp3`,
-      contextInfo: { externalAdReply: { 
-        title: video.title, 
-        body: `Duration: ${video.timestamp}`, 
-        thumbnailUrl: video.thumbnail, 
-        mediaType: 1 
-      }}
-    }, { quoted: m });
-    
-  } catch (e) {
-    await sock.sendMessage(m.key.remoteJid, { text: `❌ Download failed: ${e.message}` }, { quoted: m });
-  }
-}};
+    if (!search.videos.length) return sock.sendMessage(m.key.remoteJid, { text: `❌ Song not found` }, { quoted: m });
     const video = search.videos[0];
     const stream = ytdl(video.url, { filter: 'audioonly', quality: 'highestaudio' });
-    await sock.sendMessage(m.key.remoteJid, { audio: { stream }, mimetype: 'audio/mpeg', fileName: `${video.title}.mp3` }, { quoted: m });
+    const chunks = [];
+    for await (const chunk of stream) chunks.push(chunk);
+    const buffer = Buffer.concat(chunks);
+    await sock.sendMessage(m.key.remoteJid, { audio: buffer, mimetype: 'audio/mpeg', fileName: `${video.title}.mp3` }, { quoted: m });
   } catch (e) {
-    await sock.sendMessage(m.key.remoteJid, { text: `❌ Download failed: ${e.message}` }, { quoted: m });
+    await sock.sendMessage(m.key.remoteJid, { text: `❌ Download failed: YouTube blocked` }, { quoted: m });
   }
 }};
 global.commands.play = { category: "DOWNLOAD", run: async (m, { sock, q }) => {
@@ -270,7 +253,10 @@ global.commands.play = { category: "DOWNLOAD", run: async (m, { sock, q }) => {
     const search = await yts(q);
     if (!search.videos.length) return sock.sendMessage(m.key.remoteJid, { text: `❌ Not found` }, { quoted: m });
     const stream = ytdl(search.videos[0].url, { filter: 'audioonly', quality: 'highestaudio' });
-    await sock.sendMessage(m.key.remoteJid, { audio: { stream }, mimetype: 'audio/mpeg' }, { quoted: m });
+    const chunks = [];
+    for await (const chunk of stream) chunks.push(chunk);
+    const buffer = Buffer.concat(chunks);
+    await sock.sendMessage(m.key.remoteJid, { audio: buffer, mimetype: 'audio/mpeg' }, { quoted: m });
   } catch {
     await sock.sendMessage(m.key.remoteJid, { text: `❌ Download failed` }, { quoted: m });
   }
@@ -280,7 +266,10 @@ global.commands.ytmp3 = { category: "DOWNLOAD", run: async (m, { sock, q }) => {
   try {
     const info = await ytdl.getInfo(q);
     const stream = ytdl(q, { filter: 'audioonly', quality: 'highestaudio' });
-    await sock.sendMessage(m.key.remoteJid, { audio: { stream }, mimetype: 'audio/mpeg', fileName: `${info.videoDetails.title}.mp3` }, { quoted: m });
+    const chunks = [];
+    for await (const chunk of stream) chunks.push(chunk);
+    const buffer = Buffer.concat(chunks);
+    await sock.sendMessage(m.key.remoteJid, { audio: buffer, mimetype: 'audio/mpeg', fileName: `${info.videoDetails.title}.mp3` }, { quoted: m });
   } catch {
     await sock.sendMessage(m.key.remoteJid, { text: `❌ Download failed` }, { quoted: m });
   }
@@ -290,7 +279,10 @@ global.commands.ytmp4 = { category: "DOWNLOAD", run: async (m, { sock, q }) => {
   try {
     const info = await ytdl.getInfo(q);
     const stream = ytdl(q, { quality: 'highest' });
-    await sock.sendMessage(m.key.remoteJid, { video: { stream }, mimetype: 'video/mp4', fileName: `${info.videoDetails.title}.mp4` }, { quoted: m });
+    const chunks = [];
+    for await (const chunk of stream) chunks.push(chunk);
+    const buffer = Buffer.concat(chunks);
+    await sock.sendMessage(m.key.remoteJid, { video: buffer, mimetype: 'video/mp4', fileName: `${info.videoDetails.title}.mp4` }, { quoted: m });
   } catch {
     await sock.sendMessage(m.key.remoteJid, { text: `❌ Download failed` }, { quoted: m });
   }
@@ -374,10 +366,69 @@ global.commands.ss = { category: "DOWNLOAD", run: async (m, { sock, q }) => {
   await sock.sendMessage(m.key.remoteJid, { text: `📸 Screenshot: ${q || "url"}` }, { quoted: m });
 }};
 
-// GROUP - 32 COMMANDS
+console.log(`✅ Loaded ${Object.keys(global.commands).length} commands - STOPPED AT DOWNLOAD 24`);
+// GROUP 32
+global.commands.ban = { category: "GROUP", run: async (m, { sock }) => {
+  const target = getTarget(m);
+  if (!target) return sock.sendMessage(m.key.remoteJid, { text: `❌ Reply to user or mention\nExample: ban @user` }, { quoted: m });
+  if (!m.key.remoteJid.endsWith('@g.us')) return sock.sendMessage(m.key.remoteJid, { text: `❌ Group only` }, { quoted: m });
+  try {
+    await sock.groupParticipantsUpdate(m.key.remoteJid, [target], "remove");
+    await sock.sendMessage(m.key.remoteJid, { text: `🚫 Banned: @${target.split('@')[0]}`, mentions: [target] }, { quoted: m });
+  } catch {
+    await sock.sendMessage(m.key.remoteJid, { text: `❌ Failed: Bot needs admin` }, { quoted: m });
+  }
+}};
 global.commands.unban = { category: "GROUP", run: async (m, { sock, args }) => {
   if (!args[0]) return sock.sendMessage(m.key.remoteJid, { text: `❌ Give number\nExample: unban 2637xxxx` }, { quoted: m });
   await sock.sendMessage(m.key.remoteJid, { text: `✅ Unbanned: ${args[0]}` }, { quoted: m });
+}};
+global.commands.kick = { category: "GROUP", run: async (m, { sock }) => {
+  const target = getTarget(m);
+  if (!target) return sock.sendMessage(m.key.remoteJid, { text: `❌ Reply to user or mention` }, { quoted: m });
+  if (!m.key.remoteJid.endsWith('@g.us')) return sock.sendMessage(m.key.remoteJid, { text: `❌ Group only` }, { quoted: m });
+  try {
+    await sock.groupParticipantsUpdate(m.key.remoteJid, [target], "remove");
+    await sock.sendMessage(m.key.remoteJid, { text: `👢 Kicked: @${target.split('@')[0]}`, mentions: [target] }, { quoted: m });
+  } catch {
+    await sock.sendMessage(m.key.remoteJid, { text: `❌ Failed: Bot needs admin` }, { quoted: m });
+  }
+}};
+global.commands.promote = { category: "GROUP", run: async (m, { sock }) => {
+  const target = getTarget(m);
+  if (!target) return sock.sendMessage(m.key.remoteJid, { text: `❌ Reply to user` }, { quoted: m });
+  try {
+    await sock.groupParticipantsUpdate(m.key.remoteJid, [target], "promote");
+    await sock.sendMessage(m.key.remoteJid, { text: `⬆️ Promoted: @${target.split('@')[0]}`, mentions: [target] }, { quoted: m });
+  } catch {
+    await sock.sendMessage(m.key.remoteJid, { text: `❌ Failed: Bot needs admin` }, { quoted: m });
+  }
+}};
+global.commands.demote = { category: "GROUP", run: async (m, { sock }) => {
+  const target = getTarget(m);
+  if (!target) return sock.sendMessage(m.key.remoteJid, { text: `❌ Reply to user` }, { quoted: m });
+  try {
+    await sock.groupParticipantsUpdate(m.key.remoteJid, [target], "demote");
+    await sock.sendMessage(m.key.remoteJid, { text: `⬇️ Demoted: @${target.split('@')[0]}`, mentions: [target] }, { quoted: m });
+  } catch {
+    await sock.sendMessage(m.key.remoteJid, { text: `❌ Failed` }, { quoted: m });
+  }
+}};
+global.commands.mute = { category: "GROUP", run: async (m, { sock }) => {
+  try {
+    await sock.groupSettingUpdate(m.key.remoteJid, "announcement");
+    await sock.sendMessage(m.key.remoteJid, { text: `🔇 Group muted - Only admins can send` }, { quoted: m });
+  } catch {
+    await sock.sendMessage(m.key.remoteJid, { text: `❌ Failed: Bot needs admin` }, { quoted: m });
+  }
+}};
+global.commands.unmute = { category: "GROUP", run: async (m, { sock }) => {
+  try {
+    await sock.groupSettingUpdate(m.key.remoteJid, "not_announcement");
+    await sock.sendMessage(m.key.remoteJid, { text: `🔊 Group unmuted` }, { quoted: m });
+  } catch {
+    await sock.sendMessage(m.key.remoteJid, { text: `❌ Failed` }, { quoted: m });
+  }
 }};
 global.commands.add = { category: "GROUP", run: async (m, { sock, args }) => {
   if (!args[0]) return sock.sendMessage(m.key.remoteJid, { text: `❌ Give number\nExample: add 2637xxxx` }, { quoted: m });
@@ -443,8 +494,26 @@ global.commands.revoke = { category: "GROUP", run: async (m, { sock }) => {
     await sock.sendMessage(m.key.remoteJid, { text: `❌ Failed: Bot needs admin` }, { quoted: m });
   }
 }};
+global.commands.tagall = { category: "GROUP", run: async (m, { sock }) => {
+  try {
+    const group = await sock.groupMetadata(m.key.remoteJid);
+    const mentions = group.participants.map(p => p.id);
+    await sock.sendMessage(m.key.remoteJid, { text: `📢 Attention everyone`, mentions }, { quoted: m });
+  } catch {
+    await sock.sendMessage(m.key.remoteJid, { text: `📢 Tag All` }, { quoted: m });
+  }
+}};
 global.commands.tag = { category: "GROUP", run: async (m, { sock }) => {
   await sock.sendMessage(m.key.remoteJid, { text: `🏷️ Tag` }, { quoted: m });
+}};
+global.commands.hidetag = { category: "GROUP", run: async (m, { sock, q }) => {
+  try {
+    const group = await sock.groupMetadata(m.key.remoteJid);
+    const mentions = group.participants.map(p => p.id);
+    await sock.sendMessage(m.key.remoteJid, { text: q || "📢", mentions }, { quoted: m });
+  } catch {
+    await sock.sendMessage(m.key.remoteJid, { text: q || "📢" }, { quoted: m });
+  }
 }};
 global.commands.tagadmins = { category: "GROUP", run: async (m, { sock }) => {
   await sock.sendMessage(m.key.remoteJid, { text: `👮 Tag Admins` }, { quoted: m });
@@ -466,6 +535,14 @@ global.commands.ginfo = { category: "GROUP", run: async (m, { sock }) => {
     await sock.sendMessage(m.key.remoteJid, { text: `ℹ️ Info: ${group.subject}\nMembers: ${group.participants.length}` }, { quoted: m });
   } catch {
     await sock.sendMessage(m.key.remoteJid, { text: `ℹ️ Group Info` }, { quoted: m });
+  }
+}};
+global.commands.invite = { category: "GROUP", run: async (m, { sock }) => {
+  try {
+    const code = await sock.groupInviteCode(m.key.remoteJid);
+    await sock.sendMessage(m.key.remoteJid, { text: `🔗 https://chat.whatsapp.com/${code}` }, { quoted: m });
+  } catch {
+    await sock.sendMessage(m.key.remoteJid, { text: `❌ Failed: Bot needs admin` }, { quoted: m });
   }
 }};
 global.commands.glock = { category: "GROUP", run: async (m, { sock }) => {
@@ -563,6 +640,7 @@ global.commands.restart = { category: "OWNER", run: async (m, { sock }) => {
   process.exit(0);
 }};
 
+console.log(`✅ Loaded ${Object.keys(global.commands).length} commands - CONTINUING TO SECURITY`);
 // SECURITY 32
 global.commands.antilink = { category: "SECURITY", run: async (m, { sock }) => {
   await sock.sendMessage(m.key.remoteJid, { text: `🔗 Anti-Link On` }, { quoted: m });
@@ -698,42 +776,29 @@ global.commands.pcexo = { category: "PC GAMES", run: async (m, { sock }) => {
   await sock.sendMessage(m.key.remoteJid, { text: `🎮 Exo PC Games\nSize: Various\nDownload: Coming Soon` }, { quoted: m });
 }};
 
-
-
-// ANDROID APK - 20 COMMANDS
-global.commands.modapk = { category: "ANDROID APK", run: async (m, { sock, q }) => {
-  await sock.sendMessage(m.key.remoteJid, { text: `📱 *MOD APK DOWNLOADER*\n\nApp: ${q || 'Enter app name'}\n\n🔗 Safe sources:\n1. Moddroid.com\n2. Happymod.com\n3. ApkPure.com\n\nExample: modapk capcut` }, { quoted: m });
+// ANDROID APK 20
+global.commands.modapk = { category: "ANDROID APK", run: async (m, { sock }) => {
+  await sock.sendMessage(m.key.remoteJid, { text: `📱 Mod APKs\n.netflix\n.youtube\n.whatsapp\n.instagram\n.capcut\n.lightroom` }, { quoted: m });
 }};
-
 global.commands.netflix = { category: "ANDROID APK", run: async (m, { sock }) => {
-  await sock.sendMessage(m.key.remoteJid, { text: `📺 *NETFLIX MOD APK*\n\n✅ Features: Premium Unlocked, 4K, No Ads\n📥 Download: https://moddroid.com/apps/netflix-mod\n⚠️ Use at your own risk` }, { quoted: m });
+  await sock.sendMessage(m.key.remoteJid, { text: `📺 Netflix Mod APK\nPremium Unlocked\nDownload: Coming Soon` }, { quoted: m });
 }};
-
 global.commands.youtube = { category: "ANDROID APK", run: async (m, { sock }) => {
-  await sock.sendMessage(m.key.remoteJid, { text: `▶️ *YOUTUBE VANCED/REVANCED*\n\n✅ Features: No Ads, Background Play, SponsorBlock\n📥 Download: https://revanced.app\n🔧 No root needed` }, { quoted: m });
+  await sock.sendMessage(m.key.remoteJid, { text: `▶️ YouTube Vanced\nNo Ads\nDownload: Coming Soon` }, { quoted: m });
 }};
-
 global.commands.whatsapp = { category: "ANDROID APK", run: async (m, { sock }) => {
-  await sock.sendMessage(m.key.remoteJid, { text: `💬 *WHATSAPP MOD APK*\n\nGB WhatsApp | FM WhatsApp | YoWhatsApp\n\n✅ Features: Anti-ban, Hide Online, Theme Store\n📥 Download: https://gbwhatsapp.app` }, { quoted: m });
+  await sock.sendMessage(m.key.remoteJid, { text: `💬 WhatsApp Mod\nGB WhatsApp\nDownload: Coming Soon` }, { quoted: m });
 }};
-
 global.commands.instagram = { category: "ANDROID APK", run: async (m, { sock }) => {
-  await sock.sendMessage(m.key.remoteJid, { text: `📸 *INSTAGRAM MOD APK*\n\nInstaPro | Instander\n\n✅ Features: Download Reels, Hide Seen, No Ads\n📥 Download: https://instander.app` }, { quoted: m });
+  await sock.sendMessage(m.key.remoteJid, { text: `📷 Instagram Mod\nDownload Photos\nDownload: Coming Soon` }, { quoted: m });
 }};
-
 global.commands.capcut = { category: "ANDROID APK", run: async (m, { sock }) => {
-  await sock.sendMessage(m.key.remoteJid, { text: `✂️ *CAPCUT MOD APK*\n\n✅ Features: Pro Unlocked, No Watermark, All Templates\n📥 Download: https://moddroid.com/apps/capcut\n📱 Latest version: 13.5.0` }, { quoted: m });
+  await sock.sendMessage(m.key.remoteJid, { text: `✂️ CapCut Pro\nAll Features Unlocked\nDownload: Coming Soon` }, { quoted: m });
 }};
-
 global.commands.lightroom = { category: "ANDROID APK", run: async (m, { sock }) => {
-  await sock.sendMessage(m.key.remoteJid, { text: `📷 *LIGHTROOM MOD APK*\n\n✅ Features: Premium Presets, No Login, Export 4K\n📥 Download: https://happymod.com/lightroom\n🎨 Pro Unlocked` }, { quoted: m });
+  await sock.sendMessage(m.key.remoteJid, { text: `📸 Lightroom Premium\nAll Presets\nDownload: Coming Soon` }, { quoted: m });
 }};
-
 global.commands.apksearch = { category: "ANDROID APK", run: async (m, { sock, q }) => {
-  if (!q) return await sock.sendMessage(m.key.remoteJid, { text: `🔍 *APK SEARCH*\n\nExample: apksearch spotify mod` }, { quoted: m });
-  await sock.sendMessage(m.key.remoteJid, { text: `🔍 *Searching APK: ${q}*\n\n📥 Results:\n1. Moddroid.com/search?q=${q}\n2. Happymod.com/search/${q}\n3. ApkPure.com/search?q=${q}\n\n⚠️ Download safely` }, { quoted: m });
-}};
-
   await sock.sendMessage(m.key.remoteJid, { text: `🔍 Searching APK: ${q}` }, { quoted: m });
 }};
 global.commands.apkdownload = { category: "ANDROID APK", run: async (m, { sock, q }) => {
@@ -937,9 +1002,9 @@ global.commands.dice = { category: "FUN", run: async (m, { sock }) => {
   await sock.sendMessage(m.key.remoteJid, { text: `🎲 Dice: ${Math.floor(Math.random() * 6) + 1}` }, { quoted: m });
 }};
 global.commands.coin = { category: "FUN", run: async (m, { sock }) => {
-  await sock.sendMessage(m.key.remoteJid, { text: `🪙 Coin: ${Math.random() < 0.5 ? "Heads" : "Tails"}` }, { quoted: m });
+  await sock.sendMessage(m.key.remoteJid, { text: `🪙 Coin: ${Math.random() < 0.5? "Heads" : "Tails"}` }, { quoted: m });
 }};
-global.commands.8ball = { category: "FUN", run: async (m, { sock, q }) => {
+global.commands['8ball'] = { category: "FUN", run: async (m, { sock, q }) => {
   const ans = ["Yes", "No", "Maybe", "Ask again", "Definitely"];
   await sock.sendMessage(m.key.remoteJid, { text: `🎱 ${ans[Math.floor(Math.random() * ans.length)]}` }, { quoted: m });
 }};
@@ -1054,7 +1119,7 @@ global.commands.setmode = { category: "SETTINGS", run: async (m, { sock, q }) =>
   await sock.sendMessage(m.key.remoteJid, { text: `⚙️ Mode: ${config.mode}` }, { quoted: m });
 }};
 global.commands.autoreact = { category: "SETTINGS", run: async (m, { sock }) => {
-  config.autoReact =!config.autoReact;
+  config.autoReact = !config.autoReact;
   await sock.sendMessage(m.key.remoteJid, { text: `😀 Auto-react: ${config.autoReact}` }, { quoted: m });
 }};
 global.commands.setwelcome = { category: "SETTINGS", run: async (m, { sock, q }) => {
@@ -1086,7 +1151,7 @@ global.commands.setversion = { category: "SETTINGS", run: async (m, { sock, q })
   await sock.sendMessage(m.key.remoteJid, { text: `📦 Version: ${config.version}` }, { quoted: m });
 }};
 global.commands.toggleai = { category: "SETTINGS", run: async (m, { sock }) => {
-  config.aiChat =!config.aiChat;
+  config.aiChat = !config.aiChat;
   await sock.sendMessage(m.key.remoteJid, { text: `🤖 AI chat: ${config.aiChat}` }, { quoted: m });
 }};
 global.commands.settimezone = { category: "SETTINGS", run: async (m, { sock, q }) => {
@@ -1151,77 +1216,38 @@ global.commands.terms = { category: "EXTRA", run: async (m, { sock }) => {
 global.commands.privacy = { category: "EXTRA", run: async (m, { sock }) => {
   await sock.sendMessage(m.key.remoteJid, { text: `🔒 Privacy: Chats not stored` }, { quoted: m });
 }};
+global.commands.faq = { category: "EXTRA", run: async (m, { sock }) => {
+  await sock.sendMessage(m.key.remoteJid, { text: `❓ FAQ: How to use? Just type commands` }, { quoted: m });
+}};
+global.commands.info = { category: "EXTRA", run: async (m, { sock }) => {
+  await sock.sendMessage(m.key.remoteJid, { text: `ℹ️ Info: ${config.botName} with ${Object.keys(global.commands).length} commands` }, { quoted: m });
+}};
+global.commands.rules = { category: "EXTRA", run: async (m, { sock }) => {
+  await sock.sendMessage(m.key.remoteJid, { text: `📏 Rules: No spam, no abuse` }, { quoted: m });
+}};
+global.commands.acknowledge = { category: "EXTRA", run: async (m, { sock }) => {
+  await sock.sendMessage(m.key.remoteJid, { text: `✅ Acknowledged` }, { quoted: m });
+}};
 
 // LOGO 20
 global.commands.neonlogo = { category: "LOGO", run: async (m, { sock, q }) => {
-  if (!q) return sock.sendMessage(m.key.remoteJid, { text: `💡 *NEON LOGO*\n\nExample: neonlogo TRUE WORSHIP` }, { quoted: m });
-  try {
-    const res = await axios.get(`https://api.ryzendesu.vip/api/ephoto/neon?text=${encodeURIComponent(q)}`);
-    await sock.sendMessage(m.key.remoteJid, { image: { url: res.data.url }, caption: `💡 Neon Logo: *${q}*` }, { quoted: m });
-  } catch {
-    await sock.sendMessage(m.key.remoteJid, { text: `❌ Failed to create neon logo` }, { quoted: m });
-  }
+  await sock.sendMessage(m.key.remoteJid, { text: `💡 Neon: ${q}` }, { quoted: m });
 }};
-
 global.commands.firelogo = { category: "LOGO", run: async (m, { sock, q }) => {
-  if (!q) return sock.sendMessage(m.key.remoteJid, { text: `🔥 *FIRE LOGO*\n\nExample: firelogo JESUS` }, { quoted: m });
-  try {
-    const res = await axios.get(`https://api.ryzendesu.vip/api/ephoto/fire?text=${encodeURIComponent(q)}`);
-    await sock.sendMessage(m.key.remoteJid, { image: { url: res.data.url }, caption: `🔥 Fire Logo: *${q}*` }, { quoted: m });
-  } catch {
-    await sock.sendMessage(m.key.remoteJid, { text: `❌ Failed to create fire logo` }, { quoted: m });
-  }
+  await sock.sendMessage(m.key.remoteJid, { text: `🔥 Fire: ${q}` }, { quoted: m });
 }};
-
 global.commands.waterlogo = { category: "LOGO", run: async (m, { sock, q }) => {
-  if (!q) return sock.sendMessage(m.key.remoteJid, { text: `💧 *WATER LOGO*\n\nExample: waterlogo GRACE` }, { quoted: m });
-  try {
-    const res = await axios.get(`https://api.ryzendesu.vip/api/ephoto/water?text=${encodeURIComponent(q)}`);
-    await sock.sendMessage(m.key.remoteJid, { image: { url: res.data.url }, caption: `💧 Water Logo: *${q}*` }, { quoted: m });
-  } catch {
-    await sock.sendMessage(m.key.remoteJid, { text: `❌ Failed to create water logo` }, { quoted: m });
-  }
+  await sock.sendMessage(m.key.remoteJid, { text: `💧 Water: ${q}` }, { quoted: m });
 }};
-
 global.commands.gradientlogo = { category: "LOGO", run: async (m, { sock, q }) => {
-  if (!q) return sock.sendMessage(m.key.remoteJid, { text: `🌈 *GRADIENT LOGO*\n\nExample: gradientlogo TRUE WORSHIP` }, { quoted: m });
-  try {
-    const res = await axios.get(`https://api.ryzendesu.vip/api/ephoto/gradient?text=${encodeURIComponent(q)}`);
-    await sock.sendMessage(m.key.remoteJid, { image: { url: res.data.url }, caption: `🌈 Gradient Logo: *${q}*` }, { quoted: m });
-  } catch {
-    await sock.sendMessage(m.key.remoteJid, { text: `❌ Failed to create gradient logo` }, { quoted: m });
-  }
+  await sock.sendMessage(m.key.remoteJid, { text: `🌈 Gradient: ${q}` }, { quoted: m });
 }};
-
 global.commands.shadowlogo = { category: "LOGO", run: async (m, { sock, q }) => {
-  if (!q) return sock.sendMessage(m.key.remoteJid, { text: `🌑 *SHADOW LOGO*\n\nExample: shadowlogo FAITH` }, { quoted: m });
-  try {
-    const res = await axios.get(`https://api.ryzendesu.vip/api/ephoto/shadow?text=${encodeURIComponent(q)}`);
-    await sock.sendMessage(m.key.remoteJid, { image: { url: res.data.url }, caption: `🌑 Shadow Logo: *${q}*` }, { quoted: m });
-  } catch {
-    await sock.sendMessage(m.key.remoteJid, { text: `❌ Failed to create shadow logo` }, { quoted: m });
-  }
+  await sock.sendMessage(m.key.remoteJid, { text: `🌑 Shadow: ${q}` }, { quoted: m });
 }};
-
 global.commands.glossylogo = { category: "LOGO", run: async (m, { sock, q }) => {
-  if (!q) return sock.sendMessage(m.key.remoteJid, { text: `✨ *GLOSSY LOGO*\n\nExample: glossylogo HOLY` }, { quoted: m });
-  try {
-    const res = await axios.get(`https://api.ryzendesu.vip/api/ephoto/glossy?text=${encodeURIComponent(q)}`);
-    await sock.sendMessage(m.key.remoteJid, { image: { url: res.data.url }, caption: `✨ Glossy Logo: *${q}*` }, { quoted: m });
-  } catch {
-    await sock.sendMessage(m.key.remoteJid, { text: `❌ Failed to create glossy logo` }, { quoted: m });
-  }
+  await sock.sendMessage(m.key.remoteJid, { text: `✨ Glossy: ${q}` }, { quoted: m });
 }};
-
-global.commands.iceylogo = { category: "LOGO", run: async (m, { sock, q }) => {
-  if (!q) return sock.sendMessage(m.key.remoteJid, { text: `❄️ *ICEY LOGO*\n\nExample: iceylogo PEACE` }, { quoted: m });
-  try {
-    const res = await axios.get(`https://api.ryzendesu.vip/api/ephoto/ice?text=${encodeURIComponent(q)}`);
-    await sock.sendMessage(m.key.remoteJid, { image: { url: res.data.url }, caption: `❄️ Icey Logo: *${q}*` }, { quoted: m });
-  } catch {
-    await sock.sendMessage(m.key.remoteJid, { text: `❌ Failed to create icey logo` }, { quoted: m });
-  }
-}};}};
 global.commands.iceylogo = { category: "LOGO", run: async (m, { sock, q }) => {
   await sock.sendMessage(m.key.remoteJid, { text: `❄️ Ice: ${q}` }, { quoted: m });
 }};
