@@ -23,7 +23,7 @@ const crypto = require('crypto');
 const config = {
   owner: "Envoy Chiambiro",
   ownerNumber: "263777283870",
-  pairNumber: "27836024885", // YOUR NUMBER
+  pairNumber: "263776193021", // YOUR NUMBER
   botName: "EMAILLITE MD",
   version: "8.0.0",
   prefix: ".",
