@@ -1213,117 +1213,105 @@ global.commands.fullpp = { category: "SUDO", desc: "Set full profile pic", run: 
 }};
 
 console.log(`✅ Total Commands Loaded: ${Object.keys(global.commands).length}`);
+// ------------------- BAILEYS CONNECTION + PAIRING -------------------
+const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, Browsers, fetchLatestBaileysVersion } = require('@whiskeysockets/baileys');
 
-// ------------------- SOCKET STARTUP - RENDER SAFE PAIRING -------------------
-async function start() {
+async function startBot() {
   const { state, saveCreds } = await useMultiFileAuthState(config.sessionDir);
   const { version } = await fetchLatestBaileysVersion();
 
   const sock = makeWASocket({
     version,
-    logger: pino({ level: "silent" }),
-    printQRInTerminal: false,
     auth: state,
-    browser: Browsers.macOS("Safari")
+    printQRInTerminal: false,
+    logger: pino({ level: 'silent' }),
+    browser: Browsers.macOS('Desktop'),
+    getMessage: async (key) => ({ conversation: 'hello' })
   });
 
-  sock.ev.on("creds.update", saveCreds);
+  sock.ev.on('creds.update', saveCreds);
 
-  sock.ev.on("connection.update", async (update) => {
-    const { connection, lastDisconnect } = update;
-
-    if (connection === "open") {
-      console.log("✅ Bot connected successfully!");
-      console.log(`🤖 ${config.botName} is now online!`);
-      console.log(`📊 Total commands: ${Object.keys(global.commands).length}`);
-      console.log(`👑 Owner: ${config.owner} (${config.ownerNumber})`);
-    }
-
-    if (connection === "close") {
-      const shouldReconnect = lastDisconnect?.error?.output?.statusCode!== DisconnectReason.loggedOut;
-      console.log("Connection closed:", lastDisconnect?.error?.output?.payload?.message || "Unknown");
-      if (shouldReconnect) {
-        console.log("Reconnecting in 5 seconds...");
-        setTimeout(start, 5000);
-      } else {
-        console.log("Logged out. Delete session folder and restart.");
-      }
-    }
-  });
-
-  // PAIRING CODE - RENDER SAFE, NO READLINE
-  if (!sock.authState.creds.registered) {
-    const phoneNumber = config.ownerNumber;
-    console.log(`\n🔐 Requesting pairing code for ${phoneNumber}...`);
-    
+  // AUTO REQUEST PAIRING CODE FOR YOUR NUMBER
+  if (!sock.authState.creds.registered && config.pairNumber) {
     setTimeout(async () => {
       try {
-        const code = await sock.requestPairingCode(phoneNumber);
-        console.log(`\n🔐 YOUR PAIRING CODE: ${code}\n`);
-        console.log("📌 WhatsApp > Settings > Linked Devices > Link a Device");
-        console.log("📌 Enter this code to pair");
-        console.log("=================================\n");
-      } catch (error) {
-        console.log("❌ Failed to get pairing code:", error.message);
+        console.log('📱 Requesting pairing code for:', config.pairNumber);
+        const code = await sock.requestPairingCode(config.pairNumber);
+        console.log('\n========================================');
+        console.log('🔐 YOUR PAIRING CODE:', code);
+        console.log('========================================');
+        console.log('1. Open WhatsApp on your phone');
+        console.log('2. Go to Linked Devices > Link a Device');
+        console.log('3. Tap "Link with phone number instead"');
+        console.log('4. Enter this code:', code);
+        console.log('========================================\n');
+      } catch (e) {
+        console.log('❌ Pair failed:', e.message);
       }
     }, 3000);
   }
 
-
-
-  // ------------------- MESSAGE HANDLER -------------------
-  sock.ev.on('messages.upsert', async ({ messages }) => {
-    const m = messages[0];
-    if (!m.message || m.key.fromMe) return;
-
-    const from = m.key.remoteJid;
-    const isGroup = from.endsWith('@g.us');
-    const sender = isGroup? m.key.participant : m.key.remoteJid;
-    const pushName = m.pushName || 'User';
-    const senderNum = sender.split('@')[0];
-    const isOwner = global.owner.includes(senderNum);
-    const body = m.message.conversation || m.message.extendedTextMessage?.text || m.message.imageMessage?.caption || '';
-    const args = body.trim().split(/ +/).slice(1);
-    const q = args.join(' ');
-    const cmdName = body.trim().split(/ +/)[0].toLowerCase();
-
-    // MODE CHECK: private mode = owner only
-    if (config.mode === 'private' &&!isOwner) return;
-
-    // AUTO REACT
-    if (config.autoReact && Math.random() < 0.1) {
-      try { await sock.sendMessage(from, { react: { text: ['❤️','🔥','😂','👍','⚡'][Math.floor(Math.random()*5)], key: m.key }}); } catch {}
+  sock.ev.on('connection.update', (update) => {
+    const { connection, lastDisconnect } = update;
+    if (connection === 'open') {
+      console.log('✅ CONNECTED! Bot is 24/7 online');
+      if (config.autoJoinGroup) {
+        setTimeout(() => {
+          sock.groupAcceptInvite(config.autoJoinGroup.split('/').pop()).catch(() => {});
+        }, 5000);
+      }
     }
-
-    // AI CHAT MODE
-    if (config.aiChat &&!global.commands[cmdName] &&!body.startsWith('stopai')) {
-      try {
-        const reply = await global.tools.ai(body);
-        return await sock.sendMessage(from, { text: `🤖 ${reply}` }, { quoted: m });
-      } catch {}
-    }
-
-    // EXECUTE COMMAND
-    if (global.commands[cmdName]) {
-      try {
-        await global.commands[cmdName].run(m, { sock, q, args, isOwner, isGroup, sender, pushName });
-      } catch (e) {
-        console.log(`Command error ${cmdName}:`, e.message);
-        await sock.sendMessage(from, { text: `❌ Error: ${e.message}` }, { quoted: m });
+    if (connection === 'close') {
+      const shouldReconnect = lastDisconnect?.error?.output?.statusCode!== DisconnectReason.loggedOut;
+      if (shouldReconnect) {
+        console.log('🔄 Reconnecting...');
+        startBot();
       }
     }
   });
 
-  // ------------------- ANTI CALL -------------------
-  sock.ev.on('call', async (call) => {
-    if (config.antiCall && call[0].status === 'offer') {
+  // Message handler for all 346 commands
+  sock.ev.on('messages.upsert', async ({ messages }) => {
+    const m = messages[0];
+    if (!m.message || m.key.fromMe) return;
+
+    const body = m.message.conversation || m.message.extendedTextMessage?.text || '';
+    const isCmd = body.startsWith(config.prefix);
+    const command = isCmd? body.slice(config.prefix.length).trim().split(' ')[0].toLowerCase() : '';
+    const q = body.slice(config.prefix.length + command.length).trim();
+    const sender = m.key.participant || m.key.remoteJid;
+    const isOwner = global.owner.includes(sender.split('@')[0]);
+
+    // Auto react
+    if (config.autoReact) {
+      await sock.sendMessage(m.key.remoteJid, { react: { text: '❤️', key: m.key } });
+    }
+
+    // AI Chat mode
+    if (config.aiChat &&!isCmd && m.key.remoteJid.endsWith('@s.whatsapp.net')) {
+      const reply = await global.tools.ai(body);
+      return await sock.sendMessage(m.key.remoteJid, { text: reply }, { quoted: m });
+    }
+
+    // Execute command
+    if (isCmd && global.commands[command]) {
       try {
-        await sock.rejectCall(call[0].id, call[0].from);
-        await sock.sendMessage(call[0].from, { text: `🚫 *Calls Blocked*\n\nText only. ${config.botName} doesn't accept calls.` });
-      } catch {}
+        await global.commands[command].run(m, { sock, q, isOwner, sender });
+      } catch (e) {
+        console.log('Command error:', e.message);
+      }
+    }
+  });
+
+  // Anti-call
+  sock.ev.on('call', async (calls) => {
+    if (config.antiCall) {
+      for (const call of calls) {
+        await sock.rejectCall(call.id, call.from);
+        await sock.updateBlockStatus(call.from, 'block');
+      }
     }
   });
 }
 
-startBot();
-
+startBot(); // <-- THIS STARTS THE BOT
