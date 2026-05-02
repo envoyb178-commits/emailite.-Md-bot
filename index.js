@@ -26,14 +26,14 @@ const crypto = require('crypto');
 
 const config = {
   owner: "Envoy Chiambiro",
-  ownerNumber: "263716491962",
+  ownerNumber: "27836024885",
   botName: "EMAILLITE MD",
   version: "6.0.0",
-  mode: "public",
+  mode: "public/private",
   sessionDir: "./session",
   autoReact: true,
   antiCall: true,
-  aiChat: false
+  aiChat: true
 };
 
 global.config = config;
