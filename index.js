@@ -1214,97 +1214,123 @@ global.commands.fullpp = { category: "SUDO", desc: "Set full profile pic", run: 
 
 console.log(`✅ Total Commands Loaded: ${Object.keys(global.commands).length}`);
 
-// ------------------- START BOT + PAIRING CODE -------------------
-async function startBot() {
+// ------------------- SOCKET STARTUP - RENDER SAFE PAIRING -------------------
+async function start() {
   const { state, saveCreds } = await useMultiFileAuthState(config.sessionDir);
   const { version } = await fetchLatestBaileysVersion();
 
   const sock = makeWASocket({
     version,
-    auth: state,
+    logger: pino({ level: "silent" }),
     printQRInTerminal: false,
-    logger: pino({ level: 'silent' }),
-    browser: Browsers.macOS('Desktop')
+    auth: state,
+    browser: Browsers.macOS("Safari")
   });
 
-  sock.ev.on('creds.update', saveCreds);
+  sock.ev.on("creds.update", saveCreds);
 
-  // FORCE REQUEST PAIRING CODE
-  if (!sock.authState.creds.registered) {
-    await new Promise(r => setTimeout(r, 2000));
-    try {
-      console.log('📱 Requesting pairing code for:', config.pairNumber);
-      const code = await sock.requestPairingCode(config.pairNumber);
-      console.log('\n========================================');
-      console.log('🔐 YOUR PAIRING CODE:', code);
-      console.log('========================================');
-      console.log('1. Open WhatsApp > Linked Devices');
-      console.log('2. Tap "Link with phone number instead"');
-      console.log('3. Enter code:', code);
-      console.log('========================================\n');
-    } catch (e) {
-      console.log('❌ PAIR ERROR:', e.message);
-      console.log('Retrying in 10 seconds...');
-      setTimeout(() => startBot(), 10000);
-    }
-  }
+  sock.ev.on("connection.update", async (update) => {
+    const { connection, lastDisconnect } = update;
 
-  sock.ev.on('connection.update', ({ connection, lastDisconnect }) => {
-    if (connection === 'open') {
-      console.log('✅ CONNECTED! Bot is 24/7 online');
+    if (connection === "open") {
+      console.log("✅ Bot connected successfully!");
+      console.log(`🤖 ${config.botName} is now online!`);
+      console.log(`📊 Total commands: ${Object.keys(global.commands).length}`);
+      console.log(`👑 Owner: ${config.owner} (${config.ownerNumber})`);
     }
-    if (connection === 'close') {
+
+    if (connection === "close") {
       const shouldReconnect = lastDisconnect?.error?.output?.statusCode!== DisconnectReason.loggedOut;
+      console.log("Connection closed:", lastDisconnect?.error?.output?.payload?.message || "Unknown");
       if (shouldReconnect) {
-        console.log('🔄 Reconnecting...');
-        startBot();
+        console.log("Reconnecting in 5 seconds...");
+        setTimeout(start, 5000);
       } else {
-        console.log('❌ Logged out. Delete session folder and restart.');
+        console.log("Logged out. Delete session folder and restart.");
       }
     }
   });
-  // Message handler for all 346 commands
-  sock.ev.on('messages.upsert', async ({ messages }) => {
+
+  // PAIRING CODE - RENDER SAFE, NO READLINE
+  if (!sock.authState.creds.registered) {
+    const phoneNumber = config.ownerNumber;
+    console.log(`\n🔐 Requesting pairing code for ${phoneNumber}...`);
+    
+    setTimeout(async () => {
+      try {
+        const code = await sock.requestPairingCode(phoneNumber);
+        console.log(`\n🔐 YOUR PAIRING CODE: ${code}\n`);
+        console.log("📌 WhatsApp > Settings > Linked Devices > Link a Device");
+        console.log("📌 Enter this code to pair");
+        console.log("=================================\n");
+      } catch (error) {
+        console.log("❌ Failed to get pairing code:", error.message);
+      }
+    }, 3000);
+  }
+
+  // Anti-call
+  if (config.antiCall) {
+    sock.ev.on("call", async (calls) => {
+      for (const call of calls) {
+        await sock.sendMessage(call.from, { text: "📞 Bot doesn't accept calls. Text only." });
+        await sock.rejectCall(call.id).catch(() => {});
+      }
+    });
+  }
+
+  sock.ev.on("messages.upsert", async ({ messages, type }) => {
+    if (type!== "notify") return;
     const m = messages[0];
     if (!m.message || m.key.fromMe) return;
 
-    const body = m.message.conversation || m.message.extendedTextMessage?.text || '';
-    const isCmd = body.startsWith(config.prefix);
-    const command = isCmd? body.slice(config.prefix.length).trim().split(' ')[0].toLowerCase() : '';
-    const q = body.slice(config.prefix.length + command.length).trim();
-    const sender = m.key.participant || m.key.remoteJid;
-    const isOwner = global.owner.includes(sender.split('@')[0]);
+    const jid = m.key.remoteJid;
+    const pushName = m.pushName || "User";
+    const body = m.message.conversation || m.message.extendedTextMessage?.text || m.message.imageMessage?.caption || m.message.videoMessage?.caption || "";
 
-    // Auto react
+    if (!body) return;
+
+    // Auto-react
     if (config.autoReact) {
-      await sock.sendMessage(m.key.remoteJid, { react: { text: '❤️', key: m.key } });
+      await sock.sendMessage(jid, { react: { text: "⚡", key: m.key } }).catch(() => {});
     }
 
-    // AI Chat mode
-    if (config.aiChat &&!isCmd && m.key.remoteJid.endsWith('@s.whatsapp.net')) {
-      const reply = await global.tools.ai(body);
-      return await sock.sendMessage(m.key.remoteJid, { text: reply }, { quoted: m });
-    }
-
-    // Execute command
-    if (isCmd && global.commands[command]) {
-      try {
-        await global.commands[command].run(m, { sock, q, isOwner, sender });
-      } catch (e) {
-        console.log('Command error:', e.message);
+    // AI chat mode - no prefix needed, unlimited
+    if (config.aiChat &&!body.toLowerCase().startsWith("stopai")) {
+      const cmdNames = Object.keys(global.commands);
+      const isCommand = cmdNames.some(cmd => body.toLowerCase().split(" ")[0] === cmd);
+      if (!isCommand) {
+        try {
+          const res = await axios.get(`https://api.simsimi.net/v2/?text=${encodeURIComponent(body)}&lc=en`, { timeout: 5000 });
+          const reply = res.data.success || res.data.message || res.data.response || "I couldn't get an answer";
+          await sock.sendMessage(jid, { text: `🤖 ${reply}` }, { quoted: m });
+        } catch {
+          await sock.sendMessage(jid, { text: `🤖 I'm having trouble. Try again.` }, { quoted: m });
+        }
+        return;
       }
     }
-  });
 
-  // Anti-call
-  sock.ev.on('call', async (calls) => {
-    if (config.antiCall) {
-      for (const call of calls) {
-        await sock.rejectCall(call.id, call.from);
-        await sock.updateBlockStatus(call.from, 'block');
+    // Command dispatcher - NO PREFIX
+    const [cmdName,...args] = body.trim().split(" ");
+    const q = args.join(" ");
+    const cmd = global.commands[cmdName.toLowerCase()];
+
+    if (cmd) {
+      try {
+        await sock.sendMessage(jid, { react: { text: "✅", key: m.key } }).catch(() => {});
+        await cmd.run(m, { sock, q, args, pushName });
+      } catch (err) {
+        console.error(`Command error:`, err);
+        await sock.sendMessage(jid, { text: `❌ Error: ${err.message}` }, { quoted: m });
       }
     }
   });
 }
 
-startBot(); // <-- THIS STARTS THE BOT
+console.log(`🚀 Starting ${config.botName} v${config.version}...`);
+console.log(`📊 Total commands: ${Object.keys(global.commands).length}`);
+console.log(`👑 Owner: ${config.owner} (${config.ownerNumber})`);
+console.log(`📱 No prefix needed - just type commands directly\n`);
+
+start();
