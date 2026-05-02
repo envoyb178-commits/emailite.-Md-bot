@@ -1491,7 +1491,7 @@ async function start() {
       console.log("✅ Bot connected successfully!");
       console.log(`🤖 ${config.botName} is now online!`);
       console.log(`📊 Total commands: ${Object.keys(global.commands).length}`);
-      rl.close();
+      
     }
 
     if (connection === "close") {
@@ -1505,32 +1505,23 @@ async function start() {
       }
     }
   });
-
-  // Pairing code
-  if (!sock.authState.creds.registered) {
-    console.log("\n🔐 WHATSAPP PAIRING CODE");
-    console.log("=================================");
-    const phoneNumber = await question("📱 Enter your WhatsApp number with country code: ");
-
-    if (!phoneNumber) {
-      console.log("❌ Phone number required!");
-      process.exit(1);
-    }
-
-    const formattedNumber = phoneNumber.replace(/\D/g, '');
-    console.log(`⏳ Requesting pairing code for ${formattedNumber}...`);
-
+  //pairing code
+if (!sock.authState.creds.registered) {
+  const phoneNumber = config.ownerNumber; // Use your hardcoded number
+  console.log(`\n🔐 Requesting pairing code for ${phoneNumber}...`);
+  
+  setTimeout(async () => {
     try {
-      const code = await sock.requestPairingCode(formattedNumber);
+      const code = await sock.requestPairingCode(phoneNumber);
       console.log(`\n🔐 YOUR PAIRING CODE: ${code}\n`);
       console.log("📌 WhatsApp > Settings > Linked Devices > Link a Device");
       console.log("📌 Enter this code to pair");
       console.log("=================================\n");
     } catch (error) {
       console.log("❌ Failed to get pairing code:", error.message);
-      setTimeout(() => start(), 3000);
     }
-  }
+  }, 3000);
+}
 
   // Anti-call
   if (config.antiCall) {
