@@ -1319,63 +1319,58 @@ async function startBot() {
 
 startBot();
 
-// Line 1-40: const express, app, config, global.tools etc...
-// Line 41-68: config section you showed in screenshot
-// Line 69+: all your global.commands = {...}
-
-// REPLACE EVERYTHING FROM "async function startBot()" TO THE END
-
-const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, Browsers, fetchLatestBaileysVersion } = require('@whiskeysockets/baileys');
-
-async function startBot() {
+// ------------------- SOCKET STARTUP - RENDER SAFE PAIRING -------------------
+async function start() {
   const { state, saveCreds } = await useMultiFileAuthState(config.sessionDir);
   const { version } = await fetchLatestBaileysVersion();
 
   const sock = makeWASocket({
     version,
-    auth: state,
+    logger: pino({ level: "silent" }),
     printQRInTerminal: false,
-    logger: pino({ level: 'silent' }),
-    browser: Browsers.macOS('Desktop')
+    auth: state,
+    browser: Browsers.macOS("Safari")
   });
 
-  sock.ev.on('creds.update', saveCreds);
+  sock.ev.on("creds.update", saveCreds);
 
-  // THIS GENERATES A NEW CODE EVERY TIME
-  if (!sock.authState.creds.registered && config.pairNumber) {
+  sock.ev.on("connection.update", async (update) => {
+    const { connection, lastDisconnect } = update;
+
+    if (connection === "open") {
+      console.log("✅ Bot connected successfully!");
+      console.log(`🤖 ${config.botName} is now online!`);
+      console.log(`📊 Total commands: ${Object.keys(global.commands).length}`);
+      console.log(`👑 Owner: ${config.owner} (${config.ownerNumber})`);
+    }
+
+    if (connection === "close") {
+      const shouldReconnect = lastDisconnect?.error?.output?.statusCode!== DisconnectReason.loggedOut;
+      console.log("Connection closed:", lastDisconnect?.error?.output?.payload?.message || "Unknown");
+      if (shouldReconnect) {
+        console.log("Reconnecting in 5 seconds...");
+        setTimeout(start, 5000);
+      } else {
+        console.log("Logged out. Delete session folder and restart.");
+      }
+    }
+  });
+
+  // PAIRING CODE - RENDER SAFE, NO READLINE
+  if (!sock.authState.creds.registered) {
+    const phoneNumber = config.ownerNumber;
+    console.log(`\n🔐 Requesting pairing code for ${phoneNumber}...`);
+    
     setTimeout(async () => {
       try {
-        const code = await sock.requestPairingCode(config.pairNumber);
-        global.pairCode = code; // Store it
-        console.log("\n========================================");
-        console.log("📱 PAIRING CODE:", code);
-        console.log("📞 NUMBER:", config.pairNumber);
-        console.log("⏰ Expires in 60 seconds");
-        console.log("========================================\n");
-      } catch (e) { 
-        console.log('Pair failed:', e.message); 
+        const code = await sock.requestPairingCode(phoneNumber);
+        console.log(`\n🔐 YOUR PAIRING CODE: ${code}\n`);
+        console.log("📌 WhatsApp > Settings > Linked Devices > Link a Device");
+        console.log("📌 Enter this code to pair");
+        console.log("=================================\n");
+      } catch (error) {
+        console.log("❌ Failed to get pairing code:", error.message);
       }
     }, 3000);
   }
 
-  sock.ev.on('connection.update', (update) => {
-    const { connection, lastDisconnect } = update;
-    
-    if (connection === 'open') {
-      console.log('✅ Connected!');
-      global.pairCode = null; // Clear code after paired
-    }
-    
-    if (connection === 'close') {
-      const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
-      if (shouldReconnect) setTimeout(startBot, 3000);
-    }
-  });
-
-  // Your message handler goes here - keep existing one
-  sock.ev.on('messages.upsert', async ({ messages }) => {
-    // ... your existing message handler code
-  });
-}
-
-startBot(); // This line starts everything
