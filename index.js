@@ -1,62 +1,68 @@
 const express = require('express');
-
-const pino = require('pino');
-const fs = require('fs-extra');
-// ... rest of requires
-
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// ------------------- 24/7 KEEP-ALIVE -------------------
-app.get('/', (req, res) => res.send('EMAILLITE MD BOT - 24/7 ONLINE'));
+// 24/7 KEEP-ALIVE FOR RENDER
+app.get('/', (req, res) => res.send('EMAILLITE MD BOT is running 24/7'));
 app.get('/ping', (req, res) => res.send('pong'));
 app.listen(PORT, () => console.log(`✅ Web server online on port ${PORT}`));
 
 if (process.env.RENDER_EXTERNAL_URL) {
-  setInterval(() => require('https').get(process.env.RENDER_EXTERNAL_URL).on('error', () => {}), 4 * 60 * 1000);
+  setInterval(() => {
+    require('https').get(process.env.RENDER_EXTERNAL_URL).on('error', () => {});
+  }, 4 * 60 * 1000);
 }
-setInterval(() => require('http').get(`http://localhost:${PORT}/ping`).on('error', () => {}), 4 * 60 * 1000);
 
-process.on('uncaughtException', (err) => console.log('Caught:', err.message));
-process.on('unhandledRejection', (err) => console.log('Rejection:', err.message));
+console.log('🚀 BOOTING EMAILLITE MD...');
 
-
-
-const path = require('path');
+const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, Browsers, fetchLatestBaileysVersion } = require('@whiskeysockets/baileys');
+const { Boom } = require('@hapi/boom');
+const pino = require('pino');
+const fs = require('fs-extra');
 const axios = require('axios');
-const ytdl = require('@distube/ytdl-core');
 const yts = require('yt-search');
-const PDFDocument = require("pdfkit");
-const util = require("util");
-const gis = require("g-i-s");
+const ytdl = require('@distube/ytdl-core');
+const crypto = require('crypto');
 
-console.log('🚀 BOOTING EMAILLITE MD - 346 COMMANDS - SINGLE FILE');
-
-// ------------------- CONFIG -------------------
-global.config = {
+const config = {
   owner: "Envoy Chiambiro",
-  ownerNumber: "263716491962", // OWNER
-  pairNumber: "263716491962", // PAIR - DIFFERENT
+  ownerNumber: "27836024885",
   botName: "EMAILLITE MD",
-  version: "8.0.0",
-  mode: "public",
+  version: "6.0.0",
+  mode: "public/private",
   sessionDir: "./session",
   autoReact: true,
   antiCall: true,
-  aiChat: false,
-  autoJoinGroup: "https://chat.whatsapp.com/I5twkOKVJaaHyyLAQCOCtO?mode=gi_t",
-  prefix: "",
-  GROQ_API_KEY: process.env.GROQ_API_KEY || "",
-  API: "https://api.ryzendesu.vip",
-  PING: "⚡ Speed"
+  aiChat: true
 };
 
+global.config = config;
 fs.mkdirSync(config.sessionDir, { recursive: true });
-fs.ensureDirSync('./temp');
 
-global.owner = [config.ownerNumber, config.pairNumber];
-global.commands = {};
-let pdfStore = {};
+const getRuntime = () => {
+  const uptime = process.uptime();
+  const d = Math.floor(uptime / 86400);
+  const h = Math.floor((uptime % 86400) / 3600);
+  const m = Math.floor((uptime % 3600) / 60);
+  return `${d}d ${h}h ${m}m`;
+};
+
+const safeMath = (expression) => {
+  try {
+    if (!/^[\d\s+\-*/()%\.]+$/.test(expression)) return "Invalid expression";
+    const result = Function('"use strict"; return (' + expression + ')')();
+    return isNaN(result)? "Invalid calculation" : result;
+  } catch {
+    return "Invalid calculation";
+  }
+};
+
+const getTarget = (m) => {
+  return m.message?.extendedTextMessage?.contextInfo?.participant ||
+         m.message?.extendedTextMessage?.contextInfo?.mentionedJid?.[0] ||
+         null;
+};
+
 
 // ------------------- ALL TOOLS WITH AUTO-FALLBACK -------------------
 global.tools = {
