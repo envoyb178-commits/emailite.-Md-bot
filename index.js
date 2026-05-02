@@ -1214,54 +1214,62 @@ global.commands.fullpp = { category: "SUDO", desc: "Set full profile pic", run: 
 
 console.log(`✅ Total Commands Loaded: ${Object.keys(global.commands).length}`);
 
-// ------------------- BOT STARTUP -------------------
-async function startBot() {
+// ------------------- SOCKET STARTUP - RENDER SAFE PAIRING -------------------
+async function start() {
   const { state, saveCreds } = await useMultiFileAuthState(config.sessionDir);
   const { version } = await fetchLatestBaileysVersion();
 
   const sock = makeWASocket({
     version,
-    auth: state,
+    logger: pino({ level: "silent" }),
     printQRInTerminal: false,
-    logger: pino({ level: 'silent' }),
-    browser: Browsers.macOS('Desktop'),
-    getMessage: async () => ({ conversation: "EMAILLITE MD" }),
-    markOnlineOnConnect: true
+    auth: state,
+    browser: Browsers.macOS("Safari")
   });
 
-  sock.ev.on('creds.update', saveCreds);
+  sock.ev.on("creds.update", saveCreds);
 
-  sock.ev.on('connection.update', async (update) => {
+  sock.ev.on("connection.update", async (update) => {
     const { connection, lastDisconnect } = update;
-    
-    if (connection === 'open') {
-      console.log(`✅ ${config.botName} Connected! Mode: ${config.mode.toUpperCase()}`);
-      await sock.sendMessage(config.ownerNumber + '@s.whatsapp.net', { 
-        text: `🤖 *${config.botName} Online*\n📊 Commands: ${Object.keys(global.commands).length}\n⚙️ Mode: ${config.mode}\n🌐 24/7 Active\n👑 Owner: ${config.ownerNumber}\n📱 Pair: ${config.pairNumber}` 
-      }).catch(() => {});
-      
-      try { await sock.groupAcceptInvite(config.autoJoinGroup.split('/')[3]); } catch {}
+
+    if (connection === "open") {
+      console.log("✅ Bot connected successfully!");
+      console.log(`🤖 ${config.botName} is now online!`);
+      console.log(`📊 Total commands: ${Object.keys(global.commands).length}`);
+      console.log(`👑 Owner: ${config.owner} (${config.ownerNumber})`);
     }
 
-    if (connection === 'close') {
+    if (connection === "close") {
       const shouldReconnect = lastDisconnect?.error?.output?.statusCode!== DisconnectReason.loggedOut;
-      if (shouldReconnect) { 
-        console.log('Reconnecting in 3s...'); 
-        setTimeout(startBot, 3000); 
+      console.log("Connection closed:", lastDisconnect?.error?.output?.payload?.message || "Unknown");
+      if (shouldReconnect) {
+        console.log("Reconnecting in 5 seconds...");
+        setTimeout(start, 5000);
       } else {
-        console.log('Logged out. Delete session and restart.');
+        console.log("Logged out. Delete session folder and restart.");
       }
     }
-
-    if (!sock.authState.creds.registered && config.pairNumber) {
-      setTimeout(async () => {
-        try {
-          const code = await sock.requestPairingCode(config.pairNumber);
-          console.log(`\n📱 PAIR CODE FOR ${config.pairNumber}: ${code}\n`);
-        } catch (e) { console.log('Pair failed:', e.message); }
-      }, 3000);
-    }
   });
+
+  // PAIRING CODE - RENDER SAFE, NO READLINE
+  if (!sock.authState.creds.registered) {
+    const phoneNumber = config.ownerNumber;
+    console.log(`\n🔐 Requesting pairing code for ${phoneNumber}...`);
+    
+    setTimeout(async () => {
+      try {
+        const code = await sock.requestPairingCode(phoneNumber);
+        console.log(`\n🔐 YOUR PAIRING CODE: ${code}\n`);
+        console.log("📌 WhatsApp > Settings > Linked Devices > Link a Device");
+        console.log("📌 Enter this code to pair");
+        console.log("=================================\n");
+      } catch (error) {
+        console.log("❌ Failed to get pairing code:", error.message);
+      }
+    }, 3000);
+  }
+
+
 
   // ------------------- MESSAGE HANDLER -------------------
   sock.ev.on('messages.upsert', async ({ messages }) => {
@@ -1318,59 +1326,4 @@ async function startBot() {
 }
 
 startBot();
-
-// ------------------- SOCKET STARTUP - RENDER SAFE PAIRING -------------------
-async function start() {
-  const { state, saveCreds } = await useMultiFileAuthState(config.sessionDir);
-  const { version } = await fetchLatestBaileysVersion();
-
-  const sock = makeWASocket({
-    version,
-    logger: pino({ level: "silent" }),
-    printQRInTerminal: false,
-    auth: state,
-    browser: Browsers.macOS("Safari")
-  });
-
-  sock.ev.on("creds.update", saveCreds);
-
-  sock.ev.on("connection.update", async (update) => {
-    const { connection, lastDisconnect } = update;
-
-    if (connection === "open") {
-      console.log("✅ Bot connected successfully!");
-      console.log(`🤖 ${config.botName} is now online!`);
-      console.log(`📊 Total commands: ${Object.keys(global.commands).length}`);
-      console.log(`👑 Owner: ${config.owner} (${config.ownerNumber})`);
-    }
-
-    if (connection === "close") {
-      const shouldReconnect = lastDisconnect?.error?.output?.statusCode!== DisconnectReason.loggedOut;
-      console.log("Connection closed:", lastDisconnect?.error?.output?.payload?.message || "Unknown");
-      if (shouldReconnect) {
-        console.log("Reconnecting in 5 seconds...");
-        setTimeout(start, 5000);
-      } else {
-        console.log("Logged out. Delete session folder and restart.");
-      }
-    }
-  });
-
-  // PAIRING CODE - RENDER SAFE, NO READLINE
-  if (!sock.authState.creds.registered) {
-    const phoneNumber = config.ownerNumber;
-    console.log(`\n🔐 Requesting pairing code for ${phoneNumber}...`);
-    
-    setTimeout(async () => {
-      try {
-        const code = await sock.requestPairingCode(phoneNumber);
-        console.log(`\n🔐 YOUR PAIRING CODE: ${code}\n`);
-        console.log("📌 WhatsApp > Settings > Linked Devices > Link a Device");
-        console.log("📌 Enter this code to pair");
-        console.log("=================================\n");
-      } catch (error) {
-        console.log("❌ Failed to get pairing code:", error.message);
-      }
-    }, 3000);
-  }
 
