@@ -1213,9 +1213,8 @@ global.commands.fullpp = { category: "SUDO", desc: "Set full profile pic", run: 
 }};
 
 console.log(`✅ Total Commands Loaded: ${Object.keys(global.commands).length}`);
-// ------------------- BAILEYS CONNECTION + PAIRING -------------------
-const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, Browsers, fetchLatestBaileysVersion } = require('@whiskeysockets/baileys');
 
+// ------------------- START BOT + PAIRING CODE -------------------
 async function startBot() {
   const { state, saveCreds } = await useMultiFileAuthState(config.sessionDir);
   const { version } = await fetchLatestBaileysVersion();
@@ -1225,51 +1224,65 @@ async function startBot() {
     auth: state,
     printQRInTerminal: false,
     logger: pino({ level: 'silent' }),
-    browser: Browsers.macOS('Desktop'),
-    getMessage: async (key) => ({ conversation: 'hello' })
+    browser: Browsers.macOS('Desktop')
   });
 
   sock.ev.on('creds.update', saveCreds);
 
-  // AUTO REQUEST PAIRING CODE FOR YOUR NUMBER
-  if (!sock.authState.creds.registered && config.pairNumber) {
-    setTimeout(async () => {
-      try {
-        console.log('📱 Requesting pairing code for:', config.pairNumber);
-        const code = await sock.requestPairingCode(config.pairNumber);
-        console.log('\n========================================');
-        console.log('🔐 YOUR PAIRING CODE:', code);
-        console.log('========================================');
-        console.log('1. Open WhatsApp on your phone');
-        console.log('2. Go to Linked Devices > Link a Device');
-        console.log('3. Tap "Link with phone number instead"');
-        console.log('4. Enter this code:', code);
-        console.log('========================================\n');
-      } catch (e) {
-        console.log('❌ Pair failed:', e.message);
-      }
-    }, 3000);
+  // FORCE REQUEST PAIRING CODE
+  if (!sock.authState.creds.registered) {
+    await new Promise(r => setTimeout(r, 2000));
+    try {
+      console.log('📱 Requesting pairing code for:', config.pairNumber);
+      const code = await sock.requestPairingCode(config.pairNumber);
+      console.log('\n========================================');
+      console.log('🔐 YOUR PAIRING CODE:', code);
+      console.log('========================================');
+      console.log('1. Open WhatsApp > Linked Devices');
+      console.log('2. Tap "Link with phone number instead"');
+      console.log('3. Enter code:', code);
+      console.log('========================================\n');
+    } catch (e) {
+      console.log('❌ PAIR ERROR:', e.message);
+      console.log('Retrying in 10 seconds...');
+      setTimeout(() => startBot(), 10000);
+    }
   }
 
-  sock.ev.on('connection.update', (update) => {
-    const { connection, lastDisconnect } = update;
+  sock.ev.on('connection.update', ({ connection, lastDisconnect }) => {
     if (connection === 'open') {
       console.log('✅ CONNECTED! Bot is 24/7 online');
-      if (config.autoJoinGroup) {
-        setTimeout(() => {
-          sock.groupAcceptInvite(config.autoJoinGroup.split('/').pop()).catch(() => {});
-        }, 5000);
-      }
     }
     if (connection === 'close') {
       const shouldReconnect = lastDisconnect?.error?.output?.statusCode!== DisconnectReason.loggedOut;
       if (shouldReconnect) {
         console.log('🔄 Reconnecting...');
         startBot();
+      } else {
+        console.log('❌ Logged out. Delete session folder and restart.');
       }
     }
   });
 
+  // BASIC COMMAND HANDLER
+  sock.ev.on('messages.upsert', async ({ messages }) => {
+    const m = messages[0];
+    if (!m.message || m.key.fromMe) return;
+    const body = m.message.conversation || m.message.extendedTextMessage?.text || '';
+    if (body.toLowerCase() === 'ping') {
+      await sock.sendMessage(m.key.remoteJid, { text: '🏓 Pong! Bot online 24/7' }, { quoted: m });
+    }
+    if (body.toLowerCase() === 'menu') {
+      await sock.sendMessage(m.key.remoteJid, { text: `🤖 ${config.botName} v${config.version}\n👑 Owner: ${config.owner}\n⚙️ Mode: ${config.mode}\n🌐 Status: 24/7 ONLINE` }, { quoted: m });
+    }
+  });
+}
+
+startBot();
+
+// Catch errors but don't crash
+process.on('uncaughtException', (err) => console.log('Caught:', err.message));
+process.on('unhandledRejection', (err) => console.log('Rejection:', err.message));
   // Message handler for all 346 commands
   sock.ev.on('messages.upsert', async ({ messages }) => {
     const m = messages[0];
