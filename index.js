@@ -1263,26 +1263,6 @@ async function startBot() {
       }
     }
   });
-
-  // BASIC COMMAND HANDLER
-  sock.ev.on('messages.upsert', async ({ messages }) => {
-    const m = messages[0];
-    if (!m.message || m.key.fromMe) return;
-    const body = m.message.conversation || m.message.extendedTextMessage?.text || '';
-    if (body.toLowerCase() === 'ping') {
-      await sock.sendMessage(m.key.remoteJid, { text: '🏓 Pong! Bot online 24/7' }, { quoted: m });
-    }
-    if (body.toLowerCase() === 'menu') {
-      await sock.sendMessage(m.key.remoteJid, { text: `🤖 ${config.botName} v${config.version}\n👑 Owner: ${config.owner}\n⚙️ Mode: ${config.mode}\n🌐 Status: 24/7 ONLINE` }, { quoted: m });
-    }
-  });
-}
-
-startBot();
-
-// Catch errors but don't crash
-process.on('uncaughtException', (err) => console.log('Caught:', err.message));
-process.on('unhandledRejection', (err) => console.log('Rejection:', err.message));
   // Message handler for all 346 commands
   sock.ev.on('messages.upsert', async ({ messages }) => {
     const m = messages[0];
