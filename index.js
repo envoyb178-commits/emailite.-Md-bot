@@ -1,24 +1,13 @@
-const express = require('express');
-const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, Browsers, fetchLatestBaileysVersion } = require('@whiskeysockets/baileys');
+const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, Browsers, downloadMediaMessage } = require('@whiskeysockets/baileys');
 const pino = require('pino');
-const fs = require('fs-extra');
 const axios = require('axios');
-const yts = require('yt-search');
+const fs = require('fs');
 const ytdl = require('@distube/ytdl-core');
-const ffmpeg = require('fluent-ffmpeg');
-const crypto = require('crypto');
-
-const app = express();
-const PORT = process.env.PORT || 3000;
-
-// ------------------- 24/7 KEEP-ALIVE + FAST RECONNECT -------------------
-app.get('/', (req, res) => res.send('EMAILLITE MD BOT - 24/7 ONLINE'));
-app.get('/ping', (req, res) => res.send('pong'));
-app.listen(PORT, () => console.log(`✅ Web server online on port ${PORT}`));
-if (process.env.RENDER_EXTERNAL_URL) setInterval(() => require('https').get(process.env.RENDER_EXTERNAL_URL).on('error', () => {}), 4 * 60 * 1000);
-setInterval(() => require('http').get(`http://localhost:${PORT}/ping`).on('error', () => {}), 4 * 60 * 1000);
-
-console.log('🚀 BOOTING EMAILLITE MD - 154 COMMANDS - 24/7');
+const yts = require('yt-search');
+const simpleGit = require('simple-git');
+const git = simpleGit();
+const { exec } = require("child_process");
+const express = require('express');
 
 // ------------------- CONFIG -------------------
 global.config = {
@@ -30,8 +19,8 @@ global.config = {
   mode: "public",
   sessionDir: "./session",
   prefix: "",
-  prefixes: ["", "."], // No prefix +. both work
-  autoReact: true,
+  prefixes: ["", "."],
+  autoReact: false,
   antiCall: true,
   antilink: false,
   antidelete: false,
@@ -45,372 +34,1000 @@ global.config = {
   stickerPack: 'EMAILLITE MD',
   welcomeMsg: 'Welcome @user to @group!\nRead the description.',
   goodbyeMsg: 'Goodbye @user 👋',
-  anticallMsg: 'Calls not allowed. You will be blocked.'
+  anticallMsg: 'Calls not allowed. You will be blocked.',
+  SUDO: "",
+  API: "https://api.sparky.zone",
+  GROQ_API_KEY: ""
 };
 
-fs.mkdirSync(config.sessionDir, { recursive: true });
-fs.mkdirSync('./temp', { recursive: true });
-global.owner = [config.ownerNumber, config.pairNumber];
+global.owner = [config.ownerNumber];
 global.commands = {};
 
-// ------------------- API TOOLS -------------------
+// ------------------- TOOLS -------------------
 global.tools = {
-  uptime: () => { const up = process.uptime(); const d = Math.floor(up / 86400); const h = Math.floor((up % 86400) / 3600); const m = Math.floor((up % 3600) / 60); return `${d}d ${h}h ${m}m`; },
-  ai: async (q) => { try { const res = await axios.get(`https://api.ryzendesu.vip/api/ai/gemini?text=${encodeURIComponent(q)}`, { timeout: 10000 }); return res.data.result || res.data.success || res.data.response || "No response"; } catch { return "AI service busy, try again"; } },
-  aiImage: async (p) => `https://image.pollinations.ai/prompt/${encodeURIComponent(p)}?width=1024&height=1024&nologo=true`,
-  logo: async (type, text) => { const res = await axios.get(`https://api.ryzendesu.vip/api/ephoto/${type}?text=${encodeURIComponent(text)}`, { responseType: 'arraybuffer', timeout: 15000 }); return Buffer.from(res.data); },
-  ytdl: async (url, type = 'mp3') => { const info = await ytdl.getInfo(url); const format = type === 'mp3'? ytdl.chooseFormat(info.formats, { quality: 'highestaudio' }) : ytdl.chooseFormat(info.formats, { quality: 'highest' }); return { url: format.url, title: info.videoDetails.title }; },
-  ytsearch: async (q) => { try { return (await yts(q)).videos.slice(0, 5); } catch { return []; } },
-  tiktok: async (url) => { const res = await axios.get(`https://api.ryzendesu.vip/api/dlp/tiktok?url=${encodeURIComponent(url)}`, { timeout: 15000 }); return { video: res.data.video || res.data.url, title: res.data.title || 'TikTok' }; },
-  instagram: async (url) => { const res = await axios.get(`https://api.ryzendesu.vip/api/dlp/instagram?url=${encodeURIComponent(url)}`, { timeout: 15000 }); return { url: res.data.url || res.data.video }; },
-  spotify: async (q) => { const search = await global.tools.ytsearch(q + ' audio'); if (!search.length) throw 'Not found'; return await global.tools.ytdl(search[0].url, 'mp3'); },
-  pinterest: async (q) => { try { const res = await axios.get(`https://api.ryzendesu.vip/api/search/pinterest?query=${encodeURIComponent(q)}`); return res.data[0]; } catch { return `https://source.unsplash.com/800x600/?${encodeURIComponent(q)}`; } },
-  gitstalk: async (user) => { const res = await axios.get(`https://api.github.com/users/${user}`); return `👤 *GitHub: ${res.data.login}*\nName: ${res.data.name}\nBio: ${res.data.bio}\nRepos: ${res.data.public_repos}\nFollowers: ${res.data.followers}`; },
-  ipfinder: async (ip) => { const res = await axios.get(`http://ip-api.com/json/${ip}`); return `🌐 *IP: ${ip}*\nCountry: ${res.data.country}\nCity: ${res.data.city}\nISP: ${res.data.isp}`; },
-  translate: async (text, lang = 'es') => { const res = await axios.get(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=en|${lang}`); return res.data.responseData.translatedText; },
-  weather: async (city) => { try { const res = await axios.get(`https://api.ryzendesu.vip/api/tools/weather?city=${encodeURIComponent(city)}`); return `🌤️ *${city}*\nTemp: ${res.data.temp}°C\nCondition: ${res.data.condition}`; } catch { return await global.tools.ai(`Weather in ${city}`); } },
-  ocr: async (url) => { const res = await axios.get(`https://api.ocr.space/parse/imageurl?apikey=helloworld&url=${encodeURIComponent(url)}`); return res.data.ParsedResults[0].ParsedText || 'No text found'; },
-  shorturl: async (url) => { const res = await axios.get(`https://tinyurl.com/api-create.php?url=${encodeURIComponent(url)}`); return res.data; },
-  getTarget: (m) => m.message?.extendedTextMessage?.contextInfo?.participant || m.message?.extendedTextMessage?.contextInfo?.mentionedJid?.[0] || null,
-  isAdmin: async (sock, jid, user) => { try { const metadata = await sock.groupMetadata(jid); return metadata.participants.find(p => p.id === user)?.admin!== null; } catch { return false; } },
-  downloadMedia: async (msg) => { const buffer = await require('@whiskeysockets/baileys').downloadMediaMessage(msg, 'buffer', {}, { logger: pino({ level: 'silent' }) }); return buffer; }
+  sleep: (ms) => new Promise(r => setTimeout(r, ms)),
+  uptime: () => {
+    let s = process.uptime();
+    let d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60);
+    s = Math.floor(s % 60);
+    return `${d}d ${h}h ${m}m ${s}s`;
+  },
+  getTarget: (m) => {
+    const ctx = m.message?.extendedTextMessage?.contextInfo;
+    return ctx?.participant || ctx?.mentionedJid?.[0] || null;
+  },
+  downloadMedia: async (msg) => downloadMediaMessage(msg, 'buffer', {}, { logger: pino({ level: 'silent' }) })
 };
 
-// ------------------- MAIN 11 -------------------
-global.commands.menu = { category: "MAIN", desc: "Show menu", run: async (m, { sock }) => { await sock.sendMessage(m.key.remoteJid, { text: `🤖 *${config.botName} v${config.version}*\n📊 Commands: ${Object.keys(global.commands).length}\n👑 Owner: ${config.owner}\n⚙️ Mode: ${config.mode}\n⏰ Uptime: ${global.tools.uptime()}\n🌐 Status: 24/7 ONLINE\n📱 Pair: ${config.pairNumber}` }, { quoted: m }); }};
-global.commands.allmenu = { category: "MAIN", desc: "All commands", run: async (m, { sock }) => { const cats = {}; Object.values(global.commands).forEach(c => { if (!cats[c.category]) cats[c.category] = []; cats[c.category].push(Object.keys(global.commands).find(k => global.commands[k] === c)); }); let menu = `╔═══ *${config.botName.toUpperCase()}* ═══╗\n║ Commands: ${Object.keys(global.commands).length}\n║ Prefix: None or.\n║ Uptime: ${global.tools.uptime()}\n╚══════════════════════╝\n\n`; Object.keys(cats).sort().forEach(cat => { menu += `╔═══ *${cat}* ═══╗\n║ ${cats[cat].join('\n║ ')}\n╚═══════════════╝\n\n`; }); await sock.sendMessage(m.key.remoteJid, { text: menu }, { quoted: m }); }};
-global.commands.ping = { category: "MAIN", desc: "Bot speed", run: async (m, { sock }) => { const s = Date.now(); await sock.sendMessage(m.key.remoteJid, { text: `🏓 Pong! ${Date.now() - s}ms\n✅ 24/7 Online` }, { quoted: m }); }};
-global.commands.alive = { category: "MAIN", desc: "Bot alive", run: async (m, { sock }) => { await sock.sendMessage(m.key.remoteJid, { text: `✅ ${config.botName} Alive 24/7!\n📊 Commands: ${Object.keys(global.commands).length}\n⏰ Uptime: ${global.tools.uptime()}` }, { quoted: m }); }};
-global.commands.owner = { category: "MAIN", desc: "Owner info", run: async (m, { sock }) => { await sock.sendMessage(m.key.remoteJid, { text: `👑 Owner: ${config.owner}\n📞 Number: ${config.ownerNumber}\n📱 Pair: ${config.pairNumber}` }, { quoted: m }); }};
-global.commands.uptime = { category: "MAIN", desc: "Bot uptime", run: async (m, { sock }) => { await sock.sendMessage(m.key.remoteJid, { text: `⏰ Uptime: ${global.tools.uptime()}\n🌐 Status: 24/7 Online` }, { quoted: m }); }};
-global.commands.system = { category: "MAIN", desc: "System info", run: async (m, { sock }) => { const used = process.memoryUsage(); await sock.sendMessage(m.key.remoteJid, { text: `💻 *System*\nRAM: ${(used.rss / 1024 / 1024).toFixed(2)} MB\nPlatform: ${process.platform}\nUptime: ${global.tools.uptime()}\nNode: ${process.version}` }, { quoted: m }); }};
-global.commands.pair = { category: "MAIN", desc: "Pair request", run: async (m, { sock, q }) => { if (!q) return sock.sendMessage(m.key.remoteJid, { text: `❌ Provide number` }, { quoted: m }); const number = q.replace(/[^0-9]/g, ''); await sock.sendMessage(config.ownerNumber + '@s.whatsapp.net', { text: `🔐 Pair Request: ${number}\nFrom: @${m.sender.split('@')[0]}`, mentions: [m.sender] }); await sock.sendMessage(m.key.remoteJid, { text: `📩 Pair request sent` }, { quoted: m }); }};
-global.commands.runtime = { category: "MAIN", desc: "Runtime", run: async (m, { sock }) => { await sock.sendMessage(m.key.remoteJid, { text: `⏱️ Runtime: ${global.tools.uptime()}` }, { quoted: m }); }};
-global.commands.botinfo = { category: "MAIN", desc: "Bot info", run: async (m, { sock }) => { await sock.sendMessage(m.key.remoteJid, { text: `🤖 *Bot Info*\nName: ${config.botName}\nVersion: ${config.version}\nCommands: ${Object.keys(global.commands).length}\nOwner: ${config.owner}\nMode: ${config.mode}\nUptime: ${global.tools.uptime()}\nPair: ${config.pairNumber}` }, { quoted: m }); }};
-global.commands.list = { category: "MAIN", desc: "Command list", run: async (m, { sock }) => { await sock.sendMessage(m.key.remoteJid, { text: `📋 Total Commands: ${Object.keys(global.commands).length}\nType: allmenu for full list` }, { quoted: m }); }};
+const isAdminCheck = async (sock, jid, user) => {
+  try {
+    const metadata = await sock.groupMetadata(jid);
+    return metadata.participants.find(p => p.id === user)?.admin!== null;
+  } catch { return false; }
+};
+
+// ------------------- MAIN 10 -------------------
+global.commands.menu = { category: "MAIN", desc: "Show menu", run: async (m, { sock }) => {
+  const cats = {};
+  Object.values(global.commands).forEach(c => {
+    if (!cats[c.category]) cats[c.category] = 0;
+    cats[c.category]++;
+  });
+  let menu = `🤖 *${config.botName} v${config.version}*\n📊 Commands: ${Object.keys(global.commands).length}\n👑 Owner: ${config.owner}\n⚙️ Mode: ${config.mode}\n⏰ Uptime: ${global.tools.uptime()}\n\n*CATEGORIES:*\n`;
+  Object.keys(cats).sort().forEach(cat => { menu += `▢ ${cat} (${cats[cat]})\n`; });
+  menu += `\nType: allmenu for full list`;
+  await sock.sendMessage(m.key.remoteJid, { text: menu }, { quoted: m });
+}};
+
+global.commands.allmenu = { category: "MAIN", desc: "Full menu", run: async (m, { sock }) => {
+  const cats = {};
+  Object.values(global.commands).forEach(c => {
+    if (!cats[c.category]) cats[c.category] = [];
+    cats[c.category].push(c.desc);
+  });
+  let menu = `🤖 *${config.botName} v${config.version}*\n📊 Total: ${Object.keys(global.commands).length}\n\n`;
+  Object.keys(cats).sort().forEach(cat => {
+    menu += `┌─ *${cat}*\n`;
+    cats[cat].forEach(cmd => menu += `│ ${cmd}\n`);
+    menu += `└─────────────\n\n`;
+  });
+  await sock.sendMessage(m.key.remoteJid, { text: menu }, { quoted: m });
+}};
+
+global.commands.ping = { category: "MAIN", desc: "Bot speed", run: async (m, { sock }) => {
+  const s = Date.now();
+  await sock.sendMessage(m.key.remoteJid, { text: `🏓 Pong! ${Date.now() - s}ms` }, { quoted: m });
+}};
+
+global.commands.alive = { category: "MAIN", desc: "Bot status", run: async (m, { sock }) => {
+  await sock.sendMessage(m.key.remoteJid, { text: `✅ *${config.botName}* is Online!\n⏰ Uptime: ${global.tools.uptime()}\n📊 Commands: ${Object.keys(global.commands).length}` }, { quoted: m });
+}};
+
+global.commands.owner = { category: "MAIN", desc: "Owner info", run: async (m, { sock }) => {
+  await sock.sendMessage(m.key.remoteJid, { text: `👑 *Owner:* ${config.owner}\n📱 *Number:* ${config.ownerNumber}\n🤖 *Bot:* ${config.botName}` }, { quoted: m });
+}};
+
+global.commands.uptime = { category: "MAIN", desc: "Bot uptime", run: async (m, { sock }) => {
+  await sock.sendMessage(m.key.remoteJid, { text: `⏰ *Uptime:* ${global.tools.uptime()}` }, { quoted: m });
+}};
+
+global.commands.system = { category: "MAIN", desc: "System info", run: async (m, { sock }) => {
+  const used = process.memoryUsage();
+  const ram = (used.rss / 1024 / 1024).toFixed(2);
+  await sock.sendMessage(m.key.remoteJid, { text: `💻 *System Info*\n📊 RAM: ${ram} MB\n⚙️ Node: ${process.version}\n⏰ Uptime: ${global.tools.uptime()}` }, { quoted: m });
+}};
+
+global.commands.pair = { category: "MAIN", desc: "Pair number", run: async (m, { sock }) => {
+  await sock.sendMessage(m.key.remoteJid, { text: `📱 *Pair Number:* ${config.pairNumber}` }, { quoted: m });
+}};
+
+global.commands.runtime = { category: "MAIN", desc: "Runtime", run: async (m, { sock }) => {
+  await sock.sendMessage(m.key.remoteJid, { text: `⏰ *Runtime:* ${global.tools.uptime()}` }, { quoted: m });
+}};
+
+global.commands.botinfo = { category: "MAIN", desc: "Bot info", run: async (m, { sock }) => {
+  await sock.sendMessage(m.key.remoteJid, { text: `🤖 *${config.botName}*\n📦 Version: ${config.version}\n👑 Owner: ${config.owner}\n📊 Commands: ${Object.keys(global.commands).length}\n⚙️ Mode: ${config.mode}` }, { quoted: m });
+}};
 
 // ------------------- AI 6 -------------------
-const aiHandler = async (m, { sock, q }) => { if (!q) return sock.sendMessage(m.key.remoteJid, { text: `❌ Ask something` }, { quoted: m }); const reply = await global.tools.ai(q); await sock.sendMessage(m.key.remoteJid, { text: `🤖 ${reply}` }, { quoted: m }); };
-global.commands.ai = { category: "AI", desc: "Chat AI", run: aiHandler };
-global.commands.chatgpt = { category: "AI", desc: "ChatGPT", run: aiHandler };
-global.commands.gemini = { category: "AI", desc: "Gemini", run: aiHandler };
-global.commands.veo3 = { category: "AI", desc: "Veo3 Image", run: async (m, { sock, q }) => { if (!q) return sock.sendMessage(m.key.remoteJid, { text: `❌ Give prompt` }, { quoted: m }); const url = await global.tools.aiImage(q); await sock.sendMessage(m.key.remoteJid, { image: { url }, caption: `🎨 ${q}` }, { quoted: m }); }};
-global.commands.imagine = { category: "AI", desc: "AI image", run: async (m, { sock, q }) => { if (!q) return sock.sendMessage(m.key.remoteJid, { text: `❌ Give prompt` }, { quoted: m }); const url = await global.tools.aiImage(q); await sock.sendMessage(m.key.remoteJid, { image: { url }, caption: `🎨 ${q}` }, { quoted: m }); }};
-global.commands.img = { category: "AI", desc: "AI image", run: async (m, { sock, q }) => { return global.commands.imagine.run(m, { sock, q }); }};
-
-// ------------------- LOGO 7 -------------------
-global.commands.logo = { category: "LOGO", desc: "Generate logo", run: async (m, { sock, q }) => {
-  if (!q) return sock.sendMessage(m.key.remoteJid, { text: `❌ Usage: logo neon | your text\n\nTypes: neon, galaxy, thunder, fire, ice, gold, silver, blood, nature, wood, water, lava, light, dark, crystal, steel, chrome, matrix, comic, graffiti, typography, vintage, blackpink, marvel, harrypotter, wolf, pornhub, love, magma, toxic, rainbow, gradient, glitch` }, { quoted: m });
-  const [type,...textParts] = q.split('|').map(s => s.trim());
-  const text = textParts.join(' ');
-  if (!text) return sock.sendMessage(m.key.remoteJid, { text: `❌ Text missing\nExample: logo neon | EMAILLITE` }, { quoted: m });
-  try { const img = await global.tools.logo(type, text); await sock.sendMessage(m.key.remoteJid, { image: img, caption: `🎨 ${type}: ${text}` }, { quoted: m }); }
-  catch { await sock.sendMessage(m.key.remoteJid, { text: `❌ Invalid type or logo failed` }, { quoted: m }); }
+global.commands.ai = { category: "AI", desc: "AI Chat", run: async (m, { sock, q }) => {
+  if (!q) return sock.sendMessage(m.key.remoteJid, { text: `❌ Ask me something` }, { quoted: m });
+  try {
+    const res = await axios.get(`https://api.sparky.zone/api/ai/chat?query=${encodeURIComponent(q)}`);
+    await sock.sendMessage(m.key.remoteJid, { text: res.data.result }, { quoted: m });
+  } catch {
+    await sock.sendMessage(m.key.remoteJid, { text: `❌ AI error` }, { quoted: m });
+  }
 }};
-global.commands.blackpink = { category: "LOGO", desc: "Blackpink logo", run: async (m, { sock, q }) => { if (!q) return sock.sendMessage(m.key.remoteJid, { text: `❌ Text?` }, { quoted: m }); try { const img = await global.tools.logo('blackpink', q); await sock.sendMessage(m.key.remoteJid, { image: img, caption: `🖤💗 ${q}` }, { quoted: m }); } catch { await sock.sendMessage(m.key.remoteJid, { text: `❌ Failed` }, { quoted: m }); } }};
-global.commands.harrypotter = { category: "LOGO", desc: "Harry Potter logo", run: async (m, { sock, q }) => { if (!q) return sock.sendMessage(m.key.remoteJid, { text: `❌ Text?` }, { quoted: m }); try { const img = await global.tools.logo('harrypotter', q); await sock.sendMessage(m.key.remoteJid, { image: img, caption: `⚡ ${q}` }, { quoted: m }); } catch { await sock.sendMessage(m.key.remoteJid, { text: `❌ Failed` }, { quoted: m }); } }};
-global.commands.matrix = { category: "LOGO", desc: "Matrix logo", run: async (m, { sock, q }) => { if (!q) return sock.sendMessage(m.key.remoteJid, { text: `❌ Text?` }, { quoted: m }); try { const img = await global.tools.logo('matrix', q); await sock.sendMessage(m.key.remoteJid, { image: img, caption: `💚 ${q}` }, { quoted: m }); } catch { await sock.sendMessage(m.key.remoteJid, { text: `❌ Failed` }, { quoted: m }); } }};
-global.commands.gradient = { category: "LOGO", desc: "Gradient logo", run: async (m, { sock, q }) => { if (!q) return sock.sendMessage(m.key.remoteJid, { text: `❌ Text?` }, { quoted: m }); try { const img = await global.tools.logo('light', q); await sock.sendMessage(m.key.remoteJid, { image: img, caption: `🌈 ${q}` }, { quoted: m }); } catch { await sock.sendMessage(m.key.remoteJid, { text: `❌ Failed` }, { quoted: m }); } }};
-global.commands.glitch = { category: "LOGO", desc: "Glitch logo", run: async (m, { sock, q }) => { if (!q) return sock.sendMessage(m.key.remoteJid, { text: `❌ Text?` }, { quoted: m }); try { const img = await global.tools.logo('toxic', q); await sock.sendMessage(m.key.remoteJid, { image: img, caption: `📺 ${q}` }, { quoted: m }); } catch { await sock.sendMessage(m.key.remoteJid, { text: `❌ Failed` }, { quoted: m }); } }};
-global.commands.pornhub = { category: "LOGO", desc: "Pornhub logo", run: async (m, { sock, q }) => { if (!q) return sock.sendMessage(m.key.remoteJid, { text: `❌ Text?` }, { quoted: m }); try { const img = await global.tools.logo('pornhub', q); await sock.sendMessage(m.key.remoteJid, { image: img, caption: `🔞 ${q}` }, { quoted: m }); } catch { await sock.sendMessage(m.key.remoteJid, { text: `❌ Failed` }, { quoted: m }); } }};
 
-// ------------------- DOWNLOAD 13 - ALL WITH APIs -------------------
-global.commands.song = { category: "DOWNLOAD", desc: "Download song", run: async (m, { sock, q }) => { if (!q) return sock.sendMessage(m.key.remoteJid, { text: `❌ Song name?` }, { quoted: m }); try { const search = await global.tools.ytsearch(q); if (!search.length) return sock.sendMessage(m.key.remoteJid, { text: `❌ Not found` }, { quoted: m }); const data = await global.tools.ytdl(search[0].url, 'mp3'); await sock.sendMessage(m.key.remoteJid, { audio: { url: data.url }, mimetype: 'audio/mpeg', fileName: `${data.title}.mp3` }, { quoted: m }); } catch { await sock.sendMessage(m.key.remoteJid, { text: `❌ Download failed` }, { quoted: m }); }}};
-global.commands.play = { category: "DOWNLOAD", desc: "Play song", run: async (m, { sock, q }) => { return global.commands.song.run(m, { sock, q }); }};
-global.commands.music = { category: "DOWNLOAD", desc: "Music", run: async (m, { sock, q }) => { return global.commands.song.run(m, { sock, q }); }};
-global.commands.ytmp3 = { category: "DOWNLOAD", desc: "YT to MP3", run: async (m, { sock, q }) => { if (!q ||!ytdl.validateURL(q)) return sock.sendMessage(m.key.remoteJid, { text: `❌ Valid YouTube link?` }, { quoted: m }); try { const data = await global.tools.ytdl(q, 'mp3'); await sock.sendMessage(m.key.remoteJid, { audio: { url: data.url }, mimetype: 'audio/mpeg', fileName: `${data.title}.mp3` }, { quoted: m }); } catch { await sock.sendMessage(m.key.remoteJid, { text: `❌ Failed` }, { quoted: m }); } }};
-global.commands.ytmp4 = { category: "DOWNLOAD", desc: "YT to MP4", run: async (m, { sock, q }) => { if (!q ||!ytdl.validateURL(q)) return sock.sendMessage(m.key.remoteJid, { text: `❌ Valid YouTube link?` }, { quoted: m }); try { const data = await global.tools.ytdl(q, 'mp4'); await sock.sendMessage(m.key.remoteJid, { video: { url: data.url }, caption: `📹 ${data.title}` }, { quoted: m }); } catch { await sock.sendMessage(m.key.remoteJid, { text: `❌ Failed` }, { quoted: m }); } }};
-global.commands.yt = { category: "DOWNLOAD", desc: "YouTube", run: async (m, { sock, q }) => { return global.commands.ytmp4.run(m, { sock, q }); }};
-global.commands.youtube = { category: "DOWNLOAD", desc: "YouTube", run: async (m, { sock, q }) => { return global.commands.ytmp4.run(m, { sock, q }); }};
-global.commands.ytsearch = { category: "DOWNLOAD", desc: "Search YouTube", run: async (m, { sock, q }) => { if (!q) return sock.sendMessage(m.key.remoteJid, { text: `❌ Search query?` }, { quoted: m }); const results = await global.tools.ytsearch(q); let text = `🔍 *YouTube Results*\n\n`; results.forEach((v, i) => { text += `${i+1}. ${v.title}\n🔗 ${v.url}\n⏱️ ${v.timestamp}\n\n`; }); await sock.sendMessage(m.key.remoteJid, { text }, { quoted: m }); }};
-global.commands.tiktok = { category: "DOWNLOAD", desc: "TikTok video", run: async (m, { sock, q }) => { if (!q) return sock.sendMessage(m.key.remoteJid, { text: `❌ TikTok link?` }, { quoted: m }); try { const data = await global.tools.tiktok(q); await sock.sendMessage(m.key.remoteJid, { video: { url: data.video }, caption: `📱 ${data.title}` }, { quoted: m }); } catch { await sock.sendMessage(m.key.remoteJid, { text: `❌ TikTok failed` }, { quoted: m }); } }};
-global.commands.insta = { category: "DOWNLOAD", desc: "Instagram", run: async (m, { sock, q }) => { if (!q) return sock.sendMessage(m.key.remoteJid, { text: `❌ Instagram link?` }, { quoted: m }); try { const data = await global.tools.instagram(q); await sock.sendMessage(m.key.remoteJid, { video: { url: data.url }, caption: `📸 Instagram` }, { quoted: m }); } catch { await sock.sendMessage(m.key.remoteJid, { text: `❌ Instagram failed` }, { quoted: m }); } }};
-global.commands.spotify = { category: "DOWNLOAD", desc: "Spotify", run: async (m, { sock, q }) => { if (!q) return sock.sendMessage(m.key.remoteJid, { text: `❌ Song name?` }, { quoted: m }); try { const data = await global.tools.spotify(q); await sock.sendMessage(m.key.remoteJid, { audio: { url: data.url }, mimetype: 'audio/mpeg', fileName: `${data.title}.mp3` }, { quoted: m }); } catch { await sock.sendMessage(m.key.remoteJid, { text: `❌ Spotify failed` }, { quoted: m }); } }};
-global.commands.apk = { category: "DOWNLOAD", desc: "Download APK", run: async (m, { sock, q }) => { if (!q) return sock.sendMessage(m.key.remoteJid, { text: `❌ App name?` }, { quoted: m }); await sock.sendMessage(m.key.remoteJid, { text: `📱 APK: ${q}\n🔗 https://apkcombo.com/search/${encodeURIComponent(q)}\n🔗 https://apkpure.com/search?q=${encodeURIComponent(q)}` }, { quoted: m }); }};
-global.commands.pcgame = { category: "DOWNLOAD", desc: "PC Games", run: async (m, { sock, q }) => { if (!q) return sock.sendMessage(m.key.remoteJid, { text: `❌ Game name?` }, { quoted: m }); await sock.sendMessage(m.key.remoteJid, { text: `🎮 *PC Game: ${q}*\n\n🔗 FitGirl:\nhttps://fitgirl-repacks.site/?s=${encodeURIComponent(q)}\n\n🔗 Steam:\nhttps://store.steampowered.com/search/?term=${encodeURIComponent(q)}\n\n🔗 IGG:\nhttps://igg-games.com/?s=${encodeURIComponent(q)}` }, { quoted: m }); }};
-global.commands.ssweb = { category: "DOWNLOAD", desc: "Screenshot web", run: async (m, { sock, q }) => { if (!q) return sock.sendMessage(m.key.remoteJid, { text: `❌ Website URL?` }, { quoted: m }); await sock.sendMessage(m.key.remoteJid, { image: { url: `https://image.thum.io/get/width/1200/crop/800/${q}` }, caption: `📸 Screenshot: ${q}` }, { quoted: m }); }};
-global.commands.mediafire = { category: "DOWNLOAD", desc: "Mediafire", run: async (m, { sock, q }) => { if (!q) return sock.sendMessage(m.key.remoteJid, { text: `❌ Mediafire link?` }, { quoted: m }); await sock.sendMessage(m.key.remoteJid, { text: `📁 Processing: ${q}` }, { quoted: m }); }};
+global.commands.chatgpt = { category: "AI", desc: "ChatGPT", run: async (m, { sock, q }) => {
+  if (!q) return sock.sendMessage(m.key.remoteJid, { text: `❌ Ask me something` }, { quoted: m });
+  try {
+    const res = await axios.get(`https://api.sparky.zone/api/ai/gpt?query=${encodeURIComponent(q)}`);
+    await sock.sendMessage(m.key.remoteJid, { text: res.data.result }, { quoted: m });
+  } catch {
+    await sock.sendMessage(m.key.remoteJid, { text: `❌ Error` }, { quoted: m });
+  }
+}};
 
-// ------------------- SEARCH 3 -------------------
-global.commands.find = { category: "SEARCH", desc: "Find", run: async (m, { sock, q }) => { if (!q) return sock.sendMessage(m.key.remoteJid, { text: `❌ Search query?` }, { quoted: m }); const reply = await global.tools.ai(`Search results for: ${q}`); await sock.sendMessage(m.key.remoteJid, { text: `🔍 ${reply}` }, { quoted: m }); }};
-global.commands.image = { category: "SEARCH", desc: "Search image", run: async (m, { sock, q }) => { if (!q) return sock.sendMessage(m.key.remoteJid, { text: `❌ Search term?` }, { quoted: m }); const url = await global.tools.pinterest(q); await sock.sendMessage(m.key.remoteJid, { image: { url }, caption: `🖼️ ${q}` }, { quoted: m }); }};
-global.commands.yts = { category: "SEARCH", desc: "YouTube search", run: async (m, { sock, q }) => { if (!q) return sock.sendMessage(m.key.remoteJid, { text: `❌ Search query?` }, { quoted: m }); const results = await global.tools.ytsearch(q); let text = `🔍 *YouTube Results*\n\n`; results.forEach((v, i) => { text += `${i+1}. ${v.title}\n🔗 ${v.url}\n⏱️ ${v.timestamp}\n\n`; }); await sock.sendMessage(m.key.remoteJid, { text }, { quoted: m }); }};
+global.commands.gemini = { category: "AI", desc: "Google Gemini", run: async (m, { sock, q }) => {
+  if (!q) return sock.sendMessage(m.key.remoteJid, { text: `❌ Ask me something` }, { quoted: m });
+  try {
+    const res = await axios.get(`https://api.sparky.zone/api/ai/gemini?query=${encodeURIComponent(q)}`);
+    await sock.sendMessage(m.key.remoteJid, { text: res.data.result }, { quoted: m });
+  } catch {
+    await sock.sendMessage(m.key.remoteJid, { text: `❌ Error` }, { quoted: m });
+  }
+}};
 
-// ------------------- GROUP 37 - FROM YOUR SCREENSHOT -------------------
-global.commands.ban = { category: "GROUP", desc: "Ban user", run: async (m, { sock }) => { const target = global.tools.getTarget(m); if (!target) return sock.sendMessage(m.key.remoteJid, { text: `❌ Tag user` }, { quoted: m }); await sock.sendMessage(m.key.remoteJid, { text: `🔨 Banned @${target.split('@')[0]}`, mentions: [target] }, { quoted: m }); }};
-global.commands.unban = { category: "GROUP", desc: "Unban user", run: async (m, { sock }) => { const target = global.tools.getTarget(m); if (!target) return sock.sendMessage(m.key.remoteJid, { text: `❌ Tag user` }, { quoted: m }); await sock.sendMessage(m.key.remoteJid, { text: `✅ Unbanned @${target.split('@')[0]}`, mentions: [target] }, { quoted: m }); }};
-global.commands.promote = { category: "GROUP", desc: "Promote admin", run: async (m, { sock }) => { const target = global.tools.getTarget(m); if (!target) return sock.sendMessage(m.key.remoteJid, { text: `❌ Tag user` }, { quoted: m }); await sock.groupParticipantsUpdate(m.key.remoteJid, [target], 'promote'); await sock.sendMessage(m.key.remoteJid, { text: `⬆️ Promoted @${target.split('@')[0]}`, mentions: [target] }, { quoted: m }); }};
-global.commands.demote = { category: "GROUP", desc: "Demote admin", run: async (m, { sock }) => { const target = global.tools.getTarget(m); if (!target) return sock.sendMessage(m.key.remoteJid, { text: `❌ Tag user` }, { quoted: m }); await sock.groupParticipantsUpdate(m.key.remoteJid, [target], 'demote'); await sock.sendMessage(m.key.remoteJid, { text: `⬇️ Demoted @${target.split('@')[0]}`, mentions: [target] }, { quoted: m }); }};
-global.commands.kick = { category: "GROUP", desc: "Kick member", run: async (m, { sock }) => { const target = global.tools.getTarget(m); if (!target) return sock.sendMessage(m.key.remoteJid, { text: `❌ Tag user` }, { quoted: m }); await sock.groupParticipantsUpdate(m.key.remoteJid, [target], 'remove'); await sock.sendMessage(m.key.remoteJid, { text: `👢 Kicked @${target.split('@')[0]}`, mentions: [target] }, { quoted: m }); }};
-global.commands.mute = { category: "GROUP", desc: "Mute group", run: async (m, { sock }) => { await sock.groupSettingUpdate(m.key.remoteJid, 'announcement'); await sock.sendMessage(m.key.remoteJid, { text: `🔇 Group muted - Only admins can send messages` }, { quoted: m }); }};
-global.commands.unmute = { category: "GROUP", desc: "Unmute group", run: async (m, { sock }) => { await sock.groupSettingUpdate(m.key.remoteJid, 'not_announcement'); await sock.sendMessage(m.key.remoteJid, { text: `🔊 Group unmuted - Everyone can send messages` }, { quoted: m }); }};
-global.commands.add = { category: "GROUP", desc: "Add member", run: async (m, { sock, q }) => { if (!q) return sock.sendMessage(m.key.remoteJid, { text: `❌ Number?\nExample: add 263771234567` }, { quoted: m }); const number = q.replace(/[^0-9]/g, '') + '@s.whatsapp.net'; try { await sock.groupParticipantsUpdate(m.key.remoteJid, [number], 'add'); await sock.sendMessage(m.key.remoteJid, { text: `✅ Added ${q}` }, { quoted: m }); } catch { await sock.sendMessage(m.key.remoteJid, { text: `❌ Failed to add. User may have privacy settings` }, { quoted: m }); } }};
-global.commands.kickall = { category: "GROUP", desc: "Kick all members", run: async (m, { sock, isOwner }) => { if (!isOwner) return sock.sendMessage(m.key.remoteJid, { text: `❌ Owner only` }, { quoted: m }); const metadata = await sock.groupMetadata(m.key.remoteJid); const members = metadata.participants.filter(p =>!p.admin && p.id!== sock.user.id).map(p => p.id); if (!members.length) return sock.sendMessage(m.key.remoteJid, { text: `❌ No members to kick` }, { quoted: m }); await sock.groupParticipantsUpdate(m.key.remoteJid, members, 'remove'); await sock.sendMessage(m.key.remoteJid, { text: `💥 Kicked ${members.length} members` }, { quoted: m }); }};
-global.commands.leavegc = { category: "GROUP", desc: "Bot leaves group", run: async (m, { sock, isOwner }) => { if (!isOwner) return sock.sendMessage(m.key.remoteJid, { text: `❌ Owner only` }, { quoted: m }); await sock.sendMessage(m.key.remoteJid, { text: `👋 Leaving group...` }, { quoted: m }); await sock.groupLeave(m.key.remoteJid); }};
-global.commands.leave = { category: "GROUP", desc: "Leave group", run: async (m, { sock, isOwner }) => { return global.commands.leavegc.run(m, { sock, isOwner }); }};
-global.commands.setname = { category: "GROUP", desc: "Set group name", run: async (m, { sock, q, isAdmin }) => { if (!isAdmin) return sock.sendMessage(m.key.remoteJid, { text: `❌ Admin only` }, { quoted: m });
-if (!q) return sock.sendMessage(m.key.remoteJid, { text: `❌ New name?` }, { quoted: m }); await sock.groupUpdateSubject(m.key.remoteJid, q); await sock.sendMessage(m.key.remoteJid, { text: `✅ Group name: ${q}` }, { quoted: m }); }};
-global.commands.gname = { category: "GROUP", desc: "Group name", run: async (m, { sock, q, isAdmin }) => { return global.commands.setname.run(m, { sock, q, isAdmin }); }};
-global.commands.setdesc = { category: "GROUP", desc: "Set group desc", run: async (m, { sock, q, isAdmin }) => { if (!isAdmin) return sock.sendMessage(m.key.remoteJid, { text: `❌ Admin only` }, { quoted: m }); if (!q) return sock.sendMessage(m.key.remoteJid, { text: `❌ New description?` }, { quoted: m }); await sock.groupUpdateDescription(m.key.remoteJid, q); await sock.sendMessage(m.key.remoteJid, { text: `✅ Description updated` }, { quoted: m }); }};
-global.commands.gdesc = { category: "GROUP", desc: "Group desc", run: async (m, { sock, q, isAdmin }) => { return global.commands.setdesc.run(m, { sock, q, isAdmin }); }};
-global.commands.revoke = { category: "GROUP", desc: "Revoke invite link", run: async (m, { sock, isAdmin }) => { if (!isAdmin) return sock.sendMessage(m.key.remoteJid, { text: `❌ Admin only` }, { quoted: m }); await sock.groupRevokeInvite(m.key.remoteJid); await sock.sendMessage(m.key.remoteJid, { text: `🔗 Invite link revoked` }, { quoted: m }); }};
-global.commands.tagall = { category: "GROUP", desc: "Tag all members", run: async (m, { sock, isAdmin }) => { if (!isAdmin) return sock.sendMessage(m.key.remoteJid, { text: `❌ Admin only` }, { quoted: m }); const metadata = await sock.groupMetadata(m.key.remoteJid); const participants = metadata.participants.map(p => p.id); await sock.sendMessage(m.key.remoteJid, { text: `📢 @everyone`, mentions: participants }, { quoted: m }); }};
-global.commands.tag = { category: "GROUP", desc: "Tag", run: async (m, { sock, q, isAdmin }) => { if (!isAdmin) return sock.sendMessage(m.key.remoteJid, { text: `❌ Admin only` }, { quoted: m }); const metadata = await sock.groupMetadata(m.key.remoteJid); const participants = metadata.participants.map(p => p.id); await sock.sendMessage(m.key.remoteJid, { text: q || `📢 Tag`, mentions: participants }, { quoted: m }); }};
-global.commands.hidetag = { category: "GROUP", desc: "Hide tag", run: async (m, { sock, q, isAdmin }) => { if (!isAdmin) return sock.sendMessage(m.key.remoteJid, { text: `❌ Admin only` }, { quoted: m }); const metadata = await sock.groupMetadata(m.key.remoteJid); const participants = metadata.participants.map(p => p.id); await sock.sendMessage(m.key.remoteJid, { text: q || '', mentions: participants }, { quoted: m }); }};
-global.commands.tagadmins = { category: "GROUP", desc: "Tag admins", run: async (m, { sock, isAdmin }) => { if (!isAdmin) return sock.sendMessage(m.key.remoteJid, { text: `❌ Admin only` }, { quoted: m }); const metadata = await sock.groupMetadata(m.key.remoteJid); const admins = metadata.participants.filter(p => p.admin).map(p => p.id); await sock.sendMessage(m.key.remoteJid, { text: `👮 Admins`, mentions: admins }, { quoted: m }); }};
-global.commands.staff = { category: "GROUP", desc: "Staff list", run: async (m, { sock }) => { const metadata = await sock.groupMetadata(m.key.remoteJid); const admins = metadata.participants.filter(p => p.admin).map(p => `@${p.id.split('@')[0]}`).join('\n'); await sock.sendMessage(m.key.remoteJid, { text: `👮 *Staff List*\n\n${admins}`, mentions: metadata.participants.filter(p => p.admin).map(p => p.id) }, { quoted: m }); }};
-global.commands.groupinfo = { category: "GROUP", desc: "Group info", run: async (m, { sock }) => { const metadata = await sock.groupMetadata(m.key.remoteJid); await sock.sendMessage(m.key.remoteJid, { text: `📊 *Group Info*\nName: ${metadata.subject}\nID: ${metadata.id}\nMembers: ${metadata.participants.length}\nOwner: ${metadata.owner? '@' + metadata.owner.split('@')[0] : 'Unknown'}`, mentions: metadata.owner? [metadata.owner] : [] }, { quoted: m }); }};
-global.commands.ginfo = { category: "GROUP", desc: "Group info", run: async (m, { sock }) => { return global.commands.groupinfo.run(m, { sock }); }};
-global.commands.invite = { category: "GROUP", desc: "Get invite link", run: async (m, { sock, isAdmin }) => { if (!isAdmin) return sock.sendMessage(m.key.remoteJid, { text: `❌ Admin only` }, { quoted: m }); const code = await sock.groupInviteCode(m.key.remoteJid); await sock.sendMessage(m.key.remoteJid, { text: `🔗 https://chat.whatsapp.com/${code}` }, { quoted: m }); }};
-global.commands.glock = { category: "GROUP", desc: "Lock group settings", run: async (m, { sock, isAdmin }) => { if (!isAdmin) return sock.sendMessage(m.key.remoteJid, { text: `❌ Admin only` }, { quoted: m }); await sock.groupSettingUpdate(m.key.remoteJid, 'locked'); await sock.sendMessage(m.key.remoteJid, { text: `🔒 Group settings locked` }, { quoted: m }); }};
-global.commands.gunlock = { category: "GROUP", desc: "Unlock group settings", run: async (m, { sock, isAdmin }) => { if (!isAdmin) return sock.sendMessage(m.key.remoteJid, { text: `❌ Admin only` }, { quoted: m }); await sock.groupSettingUpdate(m.key.remoteJid, 'unlocked'); await sock.sendMessage(m.key.remoteJid, { text: `🔓 Group settings unlocked` }, { quoted: m }); }};
-global.commands.joinrequests = { category: "GROUP", desc: "Join requests", run: async (m, { sock, isAdmin }) => { if (!isAdmin) return sock.sendMessage(m.key.remoteJid, { text: `❌ Admin only` }, { quoted: m }); await sock.sendMessage(m.key.remoteJid, { text: `📥 No pending join requests` }, { quoted: m }); }};
-global.commands.gpp = { category: "GROUP", desc: "Set group PP", run: async (m, { sock, isAdmin }) => { if (!isAdmin) return sock.sendMessage(m.key.remoteJid, { text: `❌ Admin only` }, { quoted: m }); await sock.sendMessage(m.key.remoteJid, { text: `🖼️ Reply to image with 'gpp' to set group picture` }, { quoted: m }); }};
-global.commands.removegpp = { category: "GROUP", desc: "Remove group PP", run: async (m, { sock, isAdmin }) => { if (!isAdmin) return sock.sendMessage(m.key.remoteJid, { text: `❌ Admin only` }, { quoted: m }); await sock.removeProfilePicture(m.key.remoteJid); await sock.sendMessage(m.key.remoteJid, { text: `🗑️ Group picture removed` }, { quoted: m }); }};
-global.commands.join = { category: "GROUP", desc: "Join group", run: async (m, { sock, q, isOwner }) => { if (!isOwner) return sock.sendMessage(m.key.remoteJid, { text: `❌ Owner only` }, { quoted: m }); if (!q) return sock.sendMessage(m.key.remoteJid, { text: `❌ Group link?` }, { quoted: m }); const code = q.split('/')[3]; await sock.groupAcceptInvite(code); await sock.sendMessage(m.key.remoteJid, { text: `✅ Joined group` }, { quoted: m }); }};
-global.commands.creategroup = { category: "GROUP", desc: "Create group", run: async (m, { sock, q, isOwner }) => { if (!isOwner) return sock.sendMessage(m.key.remoteJid, { text: `❌ Owner only` }, { quoted: m }); if (!q) return sock.sendMessage(m.key.remoteJid, { text: `❌ Group name?` }, { quoted: m }); await sock.groupCreate(q, [m.sender]); await sock.sendMessage(m.key.remoteJid, { text: `✅ Group created: ${q}` }, { quoted: m }); }};
-global.commands.gjids = { category: "GROUP", desc: "Group JIDs", run: async (m, { sock }) => { const metadata = await sock.groupMetadata(m.key.remoteJid); const jids = metadata.participants.map(p => p.id).join('\n'); await sock.sendMessage(m.key.remoteJid, { text: `📋 *Group JIDs*\n\n${jids}` }, { quoted: m }); }};
-global.commands.group = { category: "GROUP", desc: "Group", run: async (m, { sock }) => { return global.commands.groupinfo.run(m, { sock }); }};
-global.commands.link = { category: "GROUP", desc: "Group link", run: async (m, { sock, isAdmin }) => { return global.commands.invite.run(m, { sock, isAdmin }); }};
-global.commands.admins = { category: "GROUP", desc: "List admins", run: async (m, { sock }) => { return global.commands.tagadmins.run(m, { sock }); }};
-global.commands.welcome = { category: "GROUP", desc: "Toggle welcome", run: async (m, { sock, isAdmin }) => { if (!isAdmin) return sock.sendMessage(m.key.remoteJid, { text: `❌ Admin only` }, { quoted: m }); config.welcome =!config.welcome; await sock.sendMessage(m.key.remoteJid, { text: `👋 Welcome: ${config.welcome? 'ON' : 'OFF'}` }, { quoted: m }); }};
-global.commands.goodbye = { category: "GROUP", desc: "Toggle goodbye", run: async (m, { sock, isAdmin }) => { if (!isAdmin) return sock.sendMessage(m.key.remoteJid, { text: `❌ Admin only` }, { quoted: m }); config.goodbye =!config.goodbye; await sock.sendMessage(m.key.remoteJid, { text: `👋 Goodbye: ${config.goodbye? 'ON' : 'OFF'}` }, { quoted: m }); }};
+global.commands.veo3 = { category: "AI", desc: "Veo3 AI", run: async (m, { sock, q }) => {
+  if (!q) return sock.sendMessage(m.key.remoteJid, { text: `❌ Provide prompt` }, { quoted: m });
+  await sock.sendMessage(m.key.remoteJid, { text: `🎬 Generating video...` }, { quoted: m });
+  try {
+    const res = await axios.get(`https://api.sparky.zone/api/ai/veo3?prompt=${encodeURIComponent(q)}`);
+    await sock.sendMessage(m.key.remoteJid, { video: { url: res.data.result }, caption: `🎬 Veo3: ${q}` }, { quoted: m });
+  } catch {
+    await sock.sendMessage(m.key.remoteJid, { text: `❌ Video generation failed` }, { quoted: m });
+  }
+}};
 
-// ------------------- TOOLS 11 -------------------
-global.commands.photo = { category: "TOOLS", desc: "Sticker to photo", run: async (m, { sock }) => { const quoted = m.message?.extendedTextMessage?.contextInfo?.quotedMessage; if (!quoted?.stickerMessage) return sock.sendMessage(m.key.remoteJid, { text: `❌ Reply to sticker` }, { quoted: m }); const buffer = await global.tools.downloadMedia({ message: quoted }); await sock.sendMessage(m.key.remoteJid, { image: buffer }, { quoted: m }); }};
-global.commands.sticker = { category: "TOOLS", desc: "Image to sticker", run: async (m, { sock }) => { const quoted = m.message?.extendedTextMessage?.contextInfo?.quotedMessage; if (!quoted?.imageMessage) return sock.sendMessage(m.key.remoteJid, { text: `❌ Reply to image` }, { quoted: m }); const buffer = await global.tools.downloadMedia({ message: quoted }); await sock.sendMessage(m.key.remoteJid, { sticker: buffer }, { quoted: m }); }};
-global.commands.take = { category: "TOOLS", desc: "Take sticker", run: async (m, { sock, q }) => { if (!q) return sock.sendMessage(m.key.remoteJid, { text: `❌ Packname|Author` }, { quoted: m }); await sock.sendMessage(m.key.remoteJid, { text: `🎨 Sticker pack set: ${q}` }, { quoted: m }); }};
-global.commands.trim = { category: "TOOLS", desc: "Trim video", run: async (m, { sock, q }) => { await sock.sendMessage(m.key.remoteJid, { text: `✂️ Trim feature: ${q || 'reply to video'}` }, { quoted: m }); }};
-global.commands.vv = { category: "TOOLS", desc: "View once", run: async (m, { sock }) => { const quoted = m.message?.extendedTextMessage?.contextInfo?.quotedMessage; if (!quoted?.viewOnceMessage) return sock.sendMessage(m.key.remoteJid, { text: `❌ Reply to view once` }, { quoted: m }); await sock.sendMessage(m.key.remoteJid, { text: `👁️ View once revealed` }, { quoted: m }); }};
-global.commands.gitstalk = { category: "TOOLS", desc: "Github stalk", run: async (m, { sock, q }) => { if (!q) return sock.sendMessage(m.key.remoteJid, { text: `❌ Username?` }, { quoted: m }); try { const data = await global.tools.gitstalk(q); await sock.sendMessage(m.key.remoteJid, { text: data }, { quoted: m }); } catch { await sock.sendMessage(m.key.remoteJid, { text: `❌ User not found` }, { quoted: m }); }}};
-global.commands.ipfinder = { category: "TOOLS", desc: "IP info", run: async (m, { sock, q }) => { if (!q) return sock.sendMessage(m.key.remoteJid, { text: `❌ IP address?` }, { quoted: m }); try { const data = await global.tools.ipfinder(q); await sock.sendMessage(m.key.remoteJid, { text: data }, { quoted: m }); } catch { await sock.sendMessage(m.key.remoteJid, { text: `❌ IP lookup failed` }, { quoted: m }); }}};
-global.commands.translate = { category: "TOOLS", desc: "Translate text", run: async (m, { sock, q }) => { if (!q) return sock.sendMessage(m.key.remoteJid, { text: `❌ Text|lang\nExample: translate hello|fr` }, { quoted: m }); const [text, lang] = q.split('|'); const translated = await global.tools.translate(text, lang || 'es'); await sock.sendMessage(m.key.remoteJid, { text: `🌐 ${translated}` }, { quoted: m }); }};
-global.commands.tts = { category: "TOOLS", desc: "Text to speech", run: async (m, { sock, q }) => { if (!q) return sock.sendMessage(m.key.remoteJid, { text: `❌ Text?` }, { quoted: m }); await sock.sendMessage(m.key.remoteJid, { text: `🔊 TTS: ${q}\nAudio generation coming soon` }, { quoted: m }); }};
-global.commands.whois = { category: "TOOLS", desc: "Whois domain", run: async (m, { sock, q }) => { if (!q) return sock.sendMessage(m.key.remoteJid, { text: `❌ Domain?` }, { quoted: m }); const reply = await global.tools.ai(`Whois info for domain ${q}`); await sock.sendMessage(m.key.remoteJid, { text: `🌐 ${reply}` }, { quoted: m }); }};
-global.commands.weather = { category: "TOOLS", desc: "Weather", run: async (m, { sock, q }) => { if (!q) return sock.sendMessage(m.key.remoteJid, { text: `❌ City?` }, { quoted: m }); const data = await global.tools.weather(q); await sock.sendMessage(m.key.remoteJid, { text: data }, { quoted: m }); }};
+global.commands.imagine = { category: "AI", desc: "AI Image", run: async (m, { sock, q }) => {
+  if (!q) return sock.sendMessage(m.key.remoteJid, { text: `❌ Provide prompt` }, { quoted: m });
+  await sock.sendMessage(m.key.remoteJid, { text: `🎨 Generating...` }, { quoted: m });
+  try {
+    const res = await axios.get(`https://api.sparky.zone/api/ai/imagine?prompt=${encodeURIComponent(q)}`);
+    await sock.sendMessage(m.key.remoteJid, { image: { url: res.data.result }, caption: `🎨 ${q}` }, { quoted: m });
+  } catch {
+    await sock.sendMessage(m.key.remoteJid, { text: `❌ Image generation failed` }, { quoted: m });
+  }
+}};
 
-// ------------------- ADMIN 4 -------------------
-global.commands.ban = { category: "ADMIN", desc: "Ban user", run: async (m, { sock, isOwner }) => { if (!isOwner) return sock.sendMessage(m.key.remoteJid, { text: `❌ Owner only` }, { quoted: m }); const target = global.tools.getTarget(m); if (!target) return sock.sendMessage(m.key.remoteJid, { text: `❌ Tag user` }, { quoted: m }); await sock.sendMessage(m.key.remoteJid, { text: `🔨 Banned @${target.split('@')[0]}`, mentions: [target] }, { quoted: m }); }};
-global.commands.report = { category: "ADMIN", desc: "Report user", run: async (m, { sock, q }) => { const target = global.tools.getTarget(m); await sock.sendMessage(config.ownerNumber + '@s.whatsapp.net', { text: `🚨 Report from @${m.sender.split('@')[0]}\nTarget: ${target}\nReason: ${q || 'No reason'}`, mentions: [m.sender, target].filter(Boolean) }); await sock.sendMessage(m.key.remoteJid, { text: `✅ Report sent to owner` }, { quoted: m }); }};
-global.commands.unban = { category: "ADMIN", desc: "Unban user", run: async (m, { sock, isOwner }) => { if (!isOwner) return sock.sendMessage(m.key.remoteJid, { text: `❌ Owner only` }, { quoted: m }); const target = global.tools.getTarget(m); if (!target) return sock.sendMessage(m.key.remoteJid, { text: `❌ Tag user` }, { quoted: m }); await sock.sendMessage(m.key.remoteJid, { text: `✅ Unbanned @${target.split('@')[0]}`, mentions: [target] }, { quoted: m }); }};
-global.commands.restart = { category: "ADMIN", desc: "Restart bot", run: async (m, { sock, isOwner }) => { if (!isOwner) return sock.sendMessage(m.key.remoteJid, { text: `❌ Owner only` }, { quoted: m }); await sock.sendMessage(m.key.remoteJid, { text: `🔄 Restarting...` }, { quoted: m }); process.exit(0); }};
+global.commands.img = { category: "AI", desc: "AI Image Gen", run: async (m, { sock, q }) => {
+  return global.commands.imagine.run(m, { sock, q });
+}};
 
-// ------------------- OWNER 20 -------------------
-global.commands.mode = { category: "OWNER", desc: "Change mode", run: async (m, { sock, q, isOwner }) => { if (!isOwner) return sock.sendMessage(m.key.remoteJid, { text: `❌ Owner only` }, { quoted: m }); if (!q ||!['public','private','self'].includes(q)) return sock.sendMessage(m.key.remoteJid, { text: `❌ Mode?\nOptions: public, private, self` }, { quoted: m }); config.mode = q; await sock.sendMessage(m.key.remoteJid, { text: `⚙️ Mode: ${q}` }, { quoted: m }); }};
-global.commands.public = { category: "OWNER", desc: "Public mode", run: async (m, { sock, isOwner }) => { if (!isOwner) return sock.sendMessage(m.key.remoteJid, { text: `❌ Owner only` }, { quoted: m }); config.mode = 'public'; await sock.sendMessage(m.key.remoteJid, { text: `🌍 Mode: Public` }, { quoted: m }); }};
-global.commands.private = { category: "OWNER", desc: "Private mode", run: async (m, { sock, isOwner }) => { if (!isOwner) return sock.sendMessage(m.key.remoteJid, { text: `❌ Owner only` }, { quoted: m }); config.mode = 'private'; await sock.sendMessage(m.key.remoteJid, { text: `🔒 Mode: Private` }, { quoted: m }); }};
-global.commands.autostatus = { category: "OWNER", desc: "Auto status", run: async (m, { sock, isOwner }) => { if (!isOwner) return sock.sendMessage(m.key.remoteJid, { text: `❌ Owner only` }, { quoted: m }); config.statusview =!config.statusview; await sock.sendMessage(m.key.remoteJid, { text: `📱 Auto Status: ${config.statusview? 'ON' : 'OFF'}` }, { quoted: m }); }};
-global.commands.anticall = { category: "OWNER", desc: "Anti call", run: async (m, { sock, isOwner }) => { if (!isOwner) return sock.sendMessage(m.key.remoteJid, { text: `❌ Owner only` }, { quoted: m }); config.antiCall =!config.antiCall; await sock.sendMessage(m.key.remoteJid, { text: `📵 Anti-Call: ${config.antiCall? 'ON' : 'OFF'}` }, { quoted: m }); }};
-global.commands.autodl = { category: "OWNER", desc: "Auto download", run: async (m, { sock, isOwner }) => { if (!isOwner) return sock.sendMessage(m.key.remoteJid, { text: `❌ Owner only` }, { quoted: m }); config.autodl =!config.autodl; await sock.sendMessage(m.key.remoteJid, { text: `⬇️ Auto Download: ${config.autodl? 'ON' : 'OFF'}` }, { quoted: m }); }};
-global.commands.setpp = { category: "OWNER", desc: "Set bot PP", run: async (m, { sock, isOwner }) => { if (!isOwner) return sock.sendMessage(m.key.remoteJid, { text: `❌ Owner only` }, { quoted: m }); await sock.sendMessage(m.key.remoteJid, { text: `🖼️ Reply to image with 'setpp'` }, { quoted: m }); }};
-global.commands.setbotbio = { category: "OWNER", desc: "Set bot bio", run: async (m, { sock, q, isOwner }) => { if (!isOwner) return sock.sendMessage(m.key.remoteJid, { text: `❌ Owner only` }, { quoted: m }); if (!q) return sock.sendMessage(m.key.remoteJid, { text: `❌ Bio?` }, { quoted: m }); await sock.updateProfileStatus(q); await sock.sendMessage(m.key.remoteJid, { text: `✅ Bio updated` }, { quoted: m }); }};
-global.commands.clearsession = { category: "OWNER", desc: "Clear session", run: async (m, { sock, isOwner }) => { if (!isOwner) return sock.sendMessage(m.key.remoteJid, { text: `❌ Owner only` }, { quoted: m }); await sock.sendMessage(m.key.remoteJid, { text: `🗑️ Session cleared` }, { quoted: m }); }};
-global.commands.cleartmp = { category: "OWNER", desc: "Clear temp", run: async (m, { sock, isOwner }) => { if (!isOwner) return sock.sendMessage(m.key.remoteJid, { text: `❌ Owner only` }, { quoted: m }); fs.emptyDirSync('./temp'); await sock.sendMessage(m.key.remoteJid, { text: `🗑️ Temp cleared` }, { quoted: m }); }};
-global.commands.block = { category: "OWNER", desc: "Block user", run: async (m, { sock, isOwner }) => { if (!isOwner) return sock.sendMessage(m.key.remoteJid, { text: `❌ Owner only` }, { quoted: m }); const target = global.tools.getTarget(m); if (!target) return sock.sendMessage(m.key.remoteJid, { text: `❌ Tag user` }, { quoted: m }); await sock.updateBlockStatus(target, 'block'); await sock.sendMessage(m.key.remoteJid, { text: `🚫 Blocked @${target.split('@')[0]}`, mentions: [target] }, { quoted: m }); }};
-global.commands.unblock = { category: "OWNER", desc: "Unblock user", run: async (m, { sock, isOwner }) => { if (!isOwner) return sock.sendMessage(m.key.remoteJid, { text: `❌ Owner only` }, { quoted: m }); const target = global.tools.getTarget(m); if (!target) return sock.sendMessage(m.key.remoteJid, { text: `❌ Tag user` }, { quoted: m }); await sock.updateBlockStatus(target, 'unblock'); await sock.sendMessage(m.key.remoteJid, { text: `✅ Unblocked @${target.split('@')[0]}`, mentions: [target] }, { quoted: m }); }};
-global.commands.restart = { category: "OWNER", desc: "Restart", run: async (m, { sock, isOwner }) => { if (!isOwner) return sock.sendMessage(m.key.remoteJid, { text: `❌ Owner only` }, { quoted: m }); await sock.sendMessage(m.key.remoteJid, { text: `🔄 Restarting...` }, { quoted: m }); process.exit(0); }};
-global.commands.shutdown = { category: "OWNER", desc: "Shutdown", run: async (m, { sock, isOwner }) => { if (!isOwner) return sock.sendMessage(m.key.remoteJid, { text: `❌ Owner only` }, { quoted: m }); await sock.sendMessage(m.key.remoteJid, { text: `⛔ Shutting down...` }, { quoted: m }); process.exit(1); }};
-global.commands.broadcast = { category: "OWNER", desc: "Broadcast", run: async (m, { sock, q, isOwner }) => { if (!isOwner) return sock.sendMessage(m.key.remoteJid, { text: `❌ Owner only` }, { quoted: m }); if (!q) return sock.sendMessage(m.key.remoteJid, { text: `❌ Message?` }, { quoted: m }); await sock.sendMessage(m.key.remoteJid, { text: `📢 Broadcasting: ${q}` }, { quoted: m }); }};
-global.commands.join = { category: "OWNER", desc: "Join group", run: async (m, { sock, q, isOwner }) => { if (!isOwner) return sock.sendMessage(m.key.remoteJid, { text: `❌ Owner only` }, { quoted: m }); if (!q) return sock.sendMessage(m.key.remoteJid, { text: `❌ Link?` }, { quoted: m }); const code = q.split('/')[3]; await sock.groupAcceptInvite(code); await sock.sendMessage(m.key.remoteJid, { text: `✅ Joined` }, { quoted: m }); }};
-global.commands.leave = { category: "OWNER", desc: "Leave group", run: async (m, { sock, isOwner }) => { if (!isOwner) return sock.sendMessage(m.key.remoteJid, { text: `❌ Owner only` }, { quoted: m }); await sock.sendMessage(m.key.remoteJid, { text: `👋 Leaving...` }, { quoted: m }); await sock.groupLeave(m.key.remoteJid); }};
-global.commands.setprefix = { category: "OWNER", desc: "Set prefix", run: async (m, { sock, q, isOwner }) => { if (!isOwner) return sock.sendMessage(m.key.remoteJid, { text: `❌ Owner only` }, { quoted: m }); config.prefix = q || ''; await sock.sendMessage(m.key.remoteJid, { text: `✅ Prefix: "${config.prefix || 'None'}"` }, { quoted: m }); }};
-global.commands.setname = { category: "OWNER", desc: "Set bot name", run: async (m, { sock, q, isOwner }) => { if (!isOwner) return sock.sendMessage(m.key.remoteJid, { text: `❌ Owner only` }, { quoted: m }); if (!q) return sock.sendMessage(m.key.remoteJid, { text: `❌ Name?` }, { quoted: m }); config.botName = q; await sock.sendMessage(m.key.remoteJid, { text: `🤖 Name: ${q}` }, { quoted: m }); }};
-global.commands.setdesc = { category: "OWNER", desc: "Set description", run: async (m, { sock, q, isOwner }) => { if (!isOwner) return sock.sendMessage(m.key.remoteJid, { text: `❌ Owner only` }, { quoted: m }); if (!q) return sock.sendMessage(m.key.remoteJid, { text: `❌ Description?` }, { quoted: m }); config.description = q; await sock.sendMessage(m.key.remoteJid, { text: `📝 Description set` }, { quoted: m }); }};
+// ------------------- YOUTUBE 5 -------------------
+const YtInfo = async (url) => {
+  const info = await ytdl.getInfo(url);
+  return { title: info.videoDetails.title, author: info.videoDetails.author.name, thumbnail: info.videoDetails.thumbnails.pop().url, videoId: info.videoDetails.videoId };
+};
+const yta = async (url) => {
+  const info = await ytdl.getInfo(url);
+  const format = ytdl.chooseFormat(info.formats, { quality: 'highestaudio', filter: 'audioonly' });
+  return format.url;
+};
+const ytv = async (url) => {
+  const info = await ytdl.getInfo(url);
+  const format = ytdl.chooseFormat(info.formats, { quality: 'highestvideo', filter: 'videoandaudio' });
+  return format.url;
+};
 
-// ------------------- OWNER/SETTINGS 28 -------------------
-global.commands.setwelcome = { category: "OWNER", desc: "Set welcome msg", run: async (m, { sock, q, isOwner }) => { if (!isOwner) return sock.sendMessage(m.key.remoteJid, { text: `❌ Owner only` }, { quoted: m }); if (!q) return sock.sendMessage(m.key.remoteJid, { text: `❌ Message? Use @user` }, { quoted: m }); config.welcomeMsg = q; await sock.sendMessage(m.key.remoteJid, { text: `✅ Welcome message set` }, { quoted: m }); }};
-global.commands.setgoodbye = { category: "OWNER", desc: "Set goodbye msg", run: async (m, { sock, q, isOwner }) => { if (!isOwner) return sock.sendMessage(m.key.remoteJid, { text: `❌ Owner only` }, { quoted: m }); if (!q) return sock.sendMessage(m.key.remoteJid, { text: `❌ Message? Use @user` }, { quoted: m }); config.goodbyeMsg = q; await sock.sendMessage(m.key.remoteJid, { text: `✅ Goodbye message set` }, { quoted: m }); }};
-global.commands.antiedit = { category: "OWNER", desc: "Toggle anti-edit", run: async (m, { sock, isOwner }) => { if (!isOwner) return sock.sendMessage(m.key.remoteJid, { text: `❌ Owner only` }, { quoted: m }); config.antiedit =!config.antiedit; await sock.sendMessage(m.key.remoteJid, { text: `✏️ Anti-Edit: ${config.antiedit? 'ON' : 'OFF'}` }, { quoted: m }); }};
-global.commands.editpath = { category: "OWNER", desc: "Edit path", run: async (m, { sock, q, isOwner }) => { if (!isOwner) return sock.sendMessage(m.key.remoteJid, { text: `❌ Owner only` }, { quoted: m }); await sock.sendMessage(m.key.remoteJid, { text: `📂 Path: ${q || 'default'}` }, { quoted: m }); }};
-global.commands.autoread = { category: "OWNER", desc: "Toggle auto-read", run: async (m, { sock, isOwner }) => { if (!isOwner) return sock.sendMessage(m.key.remoteJid, { text: `❌ Owner only` }, { quoted: m }); config.autoread =!config.autoread; await sock.sendMessage(m.key.remoteJid, { text: `👁️ Auto-Read: ${config.autoread? 'ON' : 'OFF'}` }, { quoted: m }); }};
-global.commands.antilink = { category: "OWNER", desc: "Toggle anti-link", run: async (m, { sock, isOwner }) => { if (!isOwner) return sock.sendMessage(m.key.remoteJid, { text: `❌ Owner only` }, { quoted: m }); config.antilink =!config.antilink; await sock.sendMessage(m.key.remoteJid, { text: `🔗 Anti-Link: ${config.antilink? 'ON' : 'OFF'}` }, { quoted: m }); }};
-global.commands.antidelete = { category: "OWNER", desc: "Toggle anti-delete", run: async (m, { sock, isOwner }) => { if (!isOwner) return sock.sendMessage(m.key.remoteJid, { text: `❌ Owner only` }, { quoted: m }); config.antidelete =!config.antidelete; await sock.sendMessage(m.key.remoteJid, { text: `🗑️ Anti-Delete: ${config.antidelete? 'ON' : 'OFF'}` }, { quoted: m }); }};
-global.commands.recording = { category: "OWNER", desc: "Recording status", run: async (m, { sock, isOwner }) => { if (!isOwner) return sock.sendMessage(m.key.remoteJid, { text: `❌ Owner only` }, { quoted: m }); config.recording =!config.recording; await sock.sendMessage(m.key.remoteJid, { text: `🎙️ Recording: ${config.recording? 'ON' : 'OFF'}` }, { quoted: m }); }};
-global.commands.statusview = { category: "OWNER", desc: "Status view", run: async (m, { sock, isOwner }) => { if (!isOwner) return sock.sendMessage(m.key.remoteJid, { text: `❌ Owner only` }, { quoted: m }); config.statusview =!config.statusview; await sock.sendMessage(m.key.remoteJid, { text: `👀 Status View: ${config.statusview? 'ON' : 'OFF'}` }, { quoted: m }); }};
-global.commands.autoreact = { category: "OWNER", desc: "Auto react", run: async (m, { sock, isOwner }) => { if (!isOwner) return sock.sendMessage(m.key.remoteJid, { text: `❌ Owner only` }, { quoted: m }); config.autoReact =!config.autoReact; await sock.sendMessage(m.key.remoteJid, { text: `💫 Auto-React: ${config.autoReact? 'ON' : 'OFF'}` }, { quoted: m }); }};
-global.commands.anticallmsg = { category: "OWNER", desc: "Anti-call msg", run: async (m, { sock, q, isOwner }) => { if (!isOwner) return sock.sendMessage(m.key.remoteJid, { text: `❌ Owner only` }, { quoted: m }); if (!q) return sock.sendMessage(m.key.remoteJid, { text: `❌ Message?` }, { quoted: m }); config.anticallMsg = q; await sock.sendMessage(m.key.remoteJid, { text: `✅ Anti-call message set` }, { quoted: m }); }};
-global.commands.adminaction = { category: "OWNER", desc: "Admin action", run: async (m, { sock, isOwner }) => { if (!isOwner) return sock.sendMessage(m.key.remoteJid, { text: `❌ Owner only` }, { quoted: m }); config.adminAction =!config.adminAction; await sock.sendMessage(m.key.remoteJid, { text: `👮 Admin Action: ${config.adminAction? 'ON' : 'OFF'}` }, { quoted: m }); }};
-global.commands.autotyping = { category: "OWNER", desc: "Auto typing", run: async (m, { sock, isOwner }) => { if (!isOwner) return sock.sendMessage(m.key.remoteJid, { text: `❌ Owner only` }, { quoted: m }); config.autotyping =!config.autotyping; await sock.sendMessage(m.key.remoteJid, { text: `⌨️ Auto-Typing: ${config.autotyping? 'ON' : 'OFF'}` }, { quoted: m }); }};
-
-global.commands.online = { category: "OWNER", desc: "Toggle online presence", run: async (m, { sock, isOwner }) => { 
-  if (!isOwner) return sock.sendMessage(m.key.remoteJid, { text: `❌ Owner only` }, { quoted: m }); 
-  config.online =!config.online; 
-  if (config.online) {
-    await sock.sendPresenceUpdate('available');
-    await sock.sendMessage(m.key.remoteJid, { text: `🟢 Online: ON\nBot now shows as available` }, { quoted: m });
+global.commands.yts = { category: "YOUTUBE", desc: "Search YouTube", run: async (m, { sock, q }) => {
+  if (!q) return sock.sendMessage(m.key.remoteJid, { text: `❌ Enter search query` }, { quoted: m });
+  if (ytdl.validateURL(q)) {
+    const yt = await YtInfo(q);
+    return await sock.sendMessage(m.key.remoteJid, { image: { url: yt.thumbnail }, caption: `*Title:* ${yt.title}\n*Author:* ${yt.author}\n*URL:* ${q}\n*Video ID:* ${yt.videoId}` }, { quoted: m });
   } else {
-    await sock.sendPresenceUpdate('unavailable');
-    await sock.sendMessage(m.key.remoteJid, { text: `⚫ Online: OFF\nBot appears offline unless typing/reading` }, { quoted: m });
+    const videos = await yts(q);
+    const result = videos.videos.slice(0, 10).map(video => `*🏷️ Title:* _*${video.title}*_\n*📁 Duration:* _${video.duration}_\n*🔗 Link:* _${video.url}_`);
+    return await sock.sendMessage(m.key.remoteJid, { text: `\n\n_*Result Of ${q} 🔍*_\n\n` + result.join('\n\n') }, { quoted: m });
   }
 }};
 
-global.commands.prefix = { category: "OWNER", desc: "Set prefix", run: async (m, { sock, q, isOwner }) => { if (!isOwner) return sock.sendMessage(m.key.remoteJid, { text: `❌ Owner only` }, { quoted: m }); config.prefix = q || ''; I = [config.prefix, '.'].filter(Boolean); await sock.sendMessage(m.key.remoteJid, { text: `✅ Prefix: "${config.prefix || 'None'}" +.` }, { quoted: m }); }};
-global.commands.botname = { category: "OWNER", desc: "Set bot name", run: async (m, { sock, q, isOwner }) => { if (!isOwner) return sock.sendMessage(m.key.remoteJid, { text: `❌ Owner only` }, { quoted: m }); if (!q) return sock.sendMessage(m.key.remoteJid, { text: `❌ Name?` }, { quoted: m }); config.botName = q; await sock.sendMessage(m.key.remoteJid, { text: `🤖 Bot name: ${q}` }, { quoted: m }); }};
-global.commands.ownername = { category: "OWNER", desc: "Set owner name", run: async (m, { sock, q, isOwner }) => { if (!isOwner) return sock.sendMessage(m.key.remoteJid, { text: `❌ Owner only` }, { quoted: m }); if (!q) return sock.sendMessage(m.key.remoteJid, { text: `❌ Name?` }, { quoted: m }); config.owner = q; await sock.sendMessage(m.key.remoteJid, { text: `👑 Owner name: ${q}` }, { quoted: m }); }};
-global.commands.ownernumber = { category: "OWNER", desc: "Set owner number", run: async (m, { sock, q, isOwner }) => { if (!isOwner) return sock.sendMessage(m.key.remoteJid, { text: `❌ Owner only` }, { quoted: m }); if (!q) return sock.sendMessage(m.key.remoteJid, { text: `❌ Number?` }, { quoted: m }); config.ownerNumber = q.replace(/[^0-9]/g, ''); await sock.sendMessage(m.key.remoteJid, { text: `📞 Owner number: ${config.ownerNumber}` }, { quoted: m }); }};
-global.commands.description = { category: "OWNER", desc: "Bot description", run: async (m, { sock, q, isOwner }) => { if (!isOwner) return sock.sendMessage(m.key.remoteJid, { text: `❌ Owner only` }, { quoted: m }); if (!q) return sock.sendMessage(m.key.remoteJid, { text: `❌ Description?` }, { quoted: m }); config.description = q; await sock.sendMessage(m.key.remoteJid, { text: `📝 Description set` }, { quoted: m }); }};
-global.commands.botdp = { category: "OWNER", desc: "Set bot DP", run: async (m, { sock, isOwner }) => { if (!isOwner) return sock.sendMessage(m.key.remoteJid, { text: `❌ Owner only` }, { quoted: m }); await sock.sendMessage(m.key.remoteJid, { text: `🖼️ Reply to image with 'botdp' to set bot profile picture` }, { quoted: m }); }};
-global.commands.stickername = { category: "OWNER", desc: "Sticker pack name", run: async (m, { sock, q, isOwner }) => { if (!isOwner) return sock.sendMessage(m.key.remoteJid, { text: `❌ Owner only` }, { quoted: m }); if (!q) return sock.sendMessage(m.key.remoteJid, { text: `❌ Pack name?` }, { quoted: m }); config.stickerPack = q; await sock.sendMessage(m.key.remoteJid, { text: `🎨 Sticker pack: ${q}` }, { quoted: m }); }};
-global.commands.delpath = { category: "OWNER", desc: "Delete path", run: async (m, { sock, q, isOwner }) => { if (!isOwner) return sock.sendMessage(m.key.remoteJid, { text: `❌ Owner only` }, { quoted: m }); if (!q) return sock.sendMessage(m.key.remoteJid, { text: `❌ Path?` }, { quoted: m }); await sock.sendMessage(m.key.remoteJid, { text: `🗑️ Deleted path: ${q}` }, { quoted: m }); }};
-global.commands.reactemojis = { category: "OWNER", desc: "React emojis", run: async (m, { sock, q, isOwner }) => { if (!isOwner) return sock.sendMessage(m.key.remoteJid, { text: `❌ Owner only` }, { quoted: m }); if (!q) return sock.sendMessage(m.key.remoteJid, { text: `❌ Emojis? Example: ❤️🔥💯` }, { quoted: m }); config.reactEmojis = q.split(''); await sock.sendMessage(m.key.remoteJid, { text: `💫 React emojis: ${q}` }, { quoted: m }); }};
-global.commands.owneremojis = { category: "OWNER", desc: "Owner emojis", run: async (m, { sock, q, isOwner }) => { if (!isOwner) return sock.sendMessage(m.key.remoteJid, { text: `❌ Owner only` }, { quoted: m }); if (!q) return sock.sendMessage(m.key.remoteJid, { text: `❌ Emojis?` }, { quoted: m }); config.ownerEmojis = q.split(''); await sock.sendMessage(m.key.remoteJid, { text: `👑 Owner emojis: ${q}` }, { quoted: m }); }};
-global.commands.settings = { category: "OWNER", desc: "Bot settings", run: async (m, { sock, isOwner }) => { if (!isOwner) return sock.sendMessage(m.key.remoteJid, { text: `❌ Owner only` }, { quoted: m }); let text = `⚙️ *BOT SETTINGS*\n\n`; text += `Bot: ${config.botName}\nOwner: ${config.owner}\nMode: ${config.mode}\nPrefix: "${config.prefix || 'None'}" +.\n`; text += `Auto-React: ${config.autoReact? 'ON' : 'OFF'}\nAnti-Call: ${config.antiCall? 'ON' : 'OFF'}\n`; text += `Anti-Link: ${config.antilink? 'ON' : 'OFF'}\nAnti-Delete: ${config.antidelete? 'ON' : 'OFF'}\n`; text += `Auto-Read: ${config.autoread? 'ON' : 'OFF'}\nAuto-Typing: ${config.autotyping? 'ON' : 'OFF'}\n`; text += `Online: ${config.online? 'ON' : 'OFF'}\nWelcome: ${config.welcome? 'ON' : 'OFF'}\n`; text += `Pair: ${config.pairNumber}\nUptime: ${global.tools.uptime()}`; await sock.sendMessage(m.key.remoteJid, { text }, { quoted: m }); }};
-// ------------------- AUDIO-EFFECTS 12 - NO FFMPEG -------------------
-const audioEffect = async (m, { sock }, effect) => { const quoted = m.message?.extendedTextMessage?.contextInfo?.quotedMessage; if (!quoted?.audioMessage) return sock.sendMessage(m.key.remoteJid, { text: `❌ Reply to audio` }, { quoted: m }); await sock.sendMessage(m.key.remoteJid, { text: `🎵 ${effect} applied` }, { quoted: m }); };
-global.commands['8d'] = { category: "AUDIO-EFFECTS", desc: "8D audio", run: (m, ctx) => audioEffect(m, ctx, '8D') };
-global.commands.reverb = { category: "AUDIO-EFFECTS", desc: "Reverb", run: (m, ctx) => audioEffect(m, ctx, 'Reverb') };
-global.commands.bass = { category: "AUDIO-EFFECTS", desc: "Bass boost", run: (m, ctx) => audioEffect(m, ctx, 'Bass') };
-global.commands.blown = { category: "AUDIO-EFFECTS", desc: "Blown", run: (m, ctx) => audioEffect(m, ctx, 'Blown') };
-global.commands.deep = { category: "AUDIO-EFFECTS", desc: "Deep", run: (m, ctx) => audioEffect(m, ctx, 'Deep') };
-global.commands.earrape = { category: "AUDIO-EFFECTS", desc: "Earrape", run: (m, ctx) => audioEffect(m, ctx, 'Earrape') };
-global.commands.fast = { category: "AUDIO-EFFECTS", desc: "Fast", run: (m, ctx) => audioEffect(m, ctx, 'Fast') };
-global.commands.fat = { category: "AUDIO-EFFECTS", desc: "Fat", run: (m, ctx) => audioEffect(m, ctx, 'Fat') };
-global.commands.nightcore = { category: "AUDIO-EFFECTS", desc: "Nightcore", run: (m, ctx) => audioEffect(m, ctx, 'Nightcore') };
-global.commands.reverse = { category: "AUDIO-EFFECTS", desc: "Reverse", run: (m, ctx) => audioEffect(m, ctx, 'Reverse') };
-global.commands.robot = { category: "AUDIO-EFFECTS", desc: "Robot", run: (m, ctx) => audioEffect(m, ctx, 'Robot') };
-global.commands.slow = { category: "AUDIO-EFFECTS", desc: "Slow", run: (m, ctx) => audioEffect(m, ctx, 'Slow') };
-
-// ------------------- CONNECTION + MESSAGE HANDLER -------------------
-let reconnectAttempts = 0;
-const maxReconnectAttempts = 10;
-
-async function connectBot() {
-  const { state, saveCreds } = await useMultiFileAuthState(config.sessionDir);
-  const { version } = await fetchLatestBaileysVersion();
-
-  const sock = makeWASocket({
-    version,
-    logger: pino({ level: 'silent' }),
-    printQRInTerminal: false,
-    auth: state,
-    browser: Browsers.ubuntu('Chrome'),
-    generateHighQualityLinkPreview: true,
-    getMessage: async () => ({ conversation: '' }),
-    markOnlineOnConnect: config.online,
-    syncFullHistory: false
-  });
-
-  // Pairing Code
-  if (!sock.authState.creds.registered) {
-    setTimeout(async () => {
-      try {
-        const code = await sock.requestPairingCode(config.pairNumber);
-        console.log(`\n🔐 PAIRING CODE: ${code}\n📱 Number: ${config.pairNumber}\n⏰ Enter this in WhatsApp > Linked Devices\n`);
-      } catch (e) { console.error('Pairing failed:', e); }
-    }, 3000);
+global.commands.ytv = { category: "YOUTUBE", desc: "Download YouTube video", run: async (m, { sock, q }) => {
+  try {
+    q = q || m.message?.extendedTextMessage?.contextInfo?.quotedMessage?.conversation;
+    if (!q) return sock.sendMessage(m.key.remoteJid, { text: `❌ Provide YouTube URL` }, { quoted: m });
+    if (!ytdl.validateURL(q)) return sock.sendMessage(m.key.remoteJid, { text: `❌ Invalid YouTube link` }, { quoted: m });
+    await sock.sendMessage(m.key.remoteJid, { react: { text: '⬇️', key: m.key } });
+    const info = await YtInfo(q);
+    await sock.sendMessage(m.key.remoteJid, { text: `📹 Downloading: ${info.title}` }, { quoted: m });
+    const url = await ytv(q);
+    await sock.sendMessage(m.key.remoteJid, { video: { url }, caption: `📹 ${info.title}` }, { quoted: m });
+    await sock.sendMessage(m.key.remoteJid, { react: { text: '✅', key: m.key } });
+  } catch (error) {
+    await sock.sendMessage(m.key.remoteJid, { react: { text: '❌', key: m.key } });
+    await sock.sendMessage(m.key.remoteJid, { text: `❌ Download failed: ${error.message}` }, { quoted: m });
   }
+}};
+
+global.commands.yta = { category: "YOUTUBE", desc: "Download YouTube audio", run: async (m, { sock, q }) => {
+  try {
+    q = q || m.message?.extendedTextMessage?.contextInfo?.quotedMessage?.conversation;
+    if (!q) return sock.sendMessage(m.key.remoteJid, { text: `❌ Provide YouTube URL` }, { quoted: m });
+    if (!ytdl.validateURL(q)) return sock.sendMessage(m.key.remoteJid, { text: `❌ Invalid YouTube link` }, { quoted: m });
+    await sock.sendMessage(m.key.remoteJid, { react: { text: '⬇️', key: m.key } });
+    const info = await YtInfo(q);
+    await sock.sendMessage(m.key.remoteJid, { text: `🎵 Downloading: ${info.title}` }, { quoted: m });
+    const url = await yta(q);
+    await sock.sendMessage(m.key.remoteJid, { audio: { url }, mimetype: 'audio/mpeg', fileName: `${info.title}.mp3` }, { quoted: m });
+    await sock.sendMessage(m.key.remoteJid, { react: { text: '✅', key: m.key } });
+  } catch (error) {
+    await sock.sendMessage(m.key.remoteJid, { react: { text: '❌', key: m.key } });
+    await sock.sendMessage(m.key.remoteJid, { text: `❌ Download failed: ${error.message}` }, { quoted: m });
+  }
+}};
+
+global.commands.play = { category: "YOUTUBE", desc: "Play song from YouTube", run: async (m, { sock, q }) => {
+  try {
+    q = q || m.message?.extendedTextMessage?.contextInfo?.quotedMessage?.conversation;
+    if (!q) return sock.sendMessage(m.key.remoteJid, { text: `❌ Enter song name` }, { quoted: m });
+    await sock.sendMessage(m.key.remoteJid, { react: { text: '🔎', key: m.key } });
+    const search = await yts(q);
+    if (!search.videos.length) return sock.sendMessage(m.key.remoteJid, { text: `❌ No results found` }, { quoted: m });
+    const play = search.videos[0];
+    await sock.sendMessage(m.key.remoteJid, { react: { text: '⬇️', key: m.key } });
+    await sock.sendMessage(m.key.remoteJid, { text: `🎵 Downloading: ${play.title}\n👤 By: ${play.author.name}` }, { quoted: m });
+    const url = await yta(play.url);
+    await sock.sendMessage(m.key.remoteJid, { audio: { url }, mimetype: 'audio/mpeg', fileName: `${play.title}.mp3` }, { quoted: m });
+    await sock.sendMessage(m.key.remoteJid, { react: { text: '✅', key: m.key } });
+  } catch (error) {
+    await sock.sendMessage(m.key.remoteJid, { react: { text: '❌', key: m.key } });
+    await sock.sendMessage(m.key.remoteJid, { text: `❌ Failed: ${error.message}` }, { quoted: m });
+  }
+}};
+
+global.commands.song = { category: "YOUTUBE", desc: "Download song", run: async (m, { sock, q }) => {
+  return global.commands.play.run(m, { sock, q });
+}};
+
+// ------------------- GROUP 37 -------------------
+global.commands.tag = { category: "GROUP", desc: "Tag with message", run: async (m, { sock, q, isAdmin }) => {
+  if (!m.key.remoteJid.endsWith('@g.us')) return sock.sendMessage(m.key.remoteJid, { text: `❌ Group only` }, { quoted: m });
+  if (!isAdmin) return sock.sendMessage(m.key.remoteJid, { text: `❌ Admin only` }, { quoted: m });
+  if (!q &&!m.message?.extendedTextMessage?.contextInfo?.quotedMessage) return sock.sendMessage(m.key.remoteJid, { text: `❌ Provide text or reply to message` }, { quoted: m });
+  const metadata = await sock.groupMetadata(m.key.remoteJid);
+  const jids = metadata.participants.map(p => p.id);
+  const text = q || m.message.extendedTextMessage.contextInfo.quotedMessage.conversation;
+  await sock.sendMessage(m.key.remoteJid, { text, mentions: jids }, { quoted: m });
+}};
+
+global.commands.hidetag = { category: "GROUP", desc: "Hide tag everyone", run: async (m, { sock, q, isAdmin }) => {
+  if (!m.key.remoteJid.endsWith('@g.us')) return sock.sendMessage(m.key.remoteJid, { text: `❌ Group only` }, { quoted: m });
+  if (!isAdmin) return sock.sendMessage(m.key.remoteJid, { text: `❌ Admin only` }, { quoted: m });
+  const metadata = await sock.groupMetadata(m.key.remoteJid);
+  const jids = metadata.participants.map(p => p.id);
+  await sock.sendMessage(m.key.remoteJid, { text: q || '', mentions: jids }, { quoted: m });
+}};
+
+global.commands.tagall = { category: "GROUP", desc: "Tag all members", run: async (m, { sock, isAdmin }) => {
+  if (!m.key.remoteJid.endsWith('@g.us')) return sock.sendMessage(m.key.remoteJid, { text: `❌ Group only` }, { quoted: m });
+  if (!isAdmin) return sock.sendMessage(m.key.remoteJid, { text: `❌ Admin only` }, { quoted: m });
+  const metadata = await sock.groupMetadata(m.key.remoteJid).catch(() => ({ participants: [] }));
+  if (!metadata.participants.length) return sock.sendMessage(m.key.remoteJid, { text: `❌ Failed to get members` }, { quoted: m });
+  const msg = metadata.participants.map((p, i) => `${i + 1}. @${p.id.split('@')[0]}`).join("\n");
+  const jids = metadata.participants.map(p => p.id);
+  await sock.sendMessage(m.key.remoteJid, { text: msg, mentions: jids }, { quoted: m });
+}};
+
+global.commands.tagadmins = { category: "GROUP", desc: "Tag admins only", run: async (m, { sock, isAdmin }) => {
+  if (!m.key.remoteJid.endsWith('@g.us')) return sock.sendMessage(m.key.remoteJid, { text: `❌ Group only` }, { quoted: m });
+  if (!isAdmin) return sock.sendMessage(m.key.remoteJid, { text: `❌ Admin only` }, { quoted: m });
+  const metadata = await sock.groupMetadata(m.key.remoteJid);
+  const admins = metadata.participants.filter(p => p.admin!== null).map(p => p.id);
+  const msg = `👑 *Group Admins*\n\n${admins.map((a, i) => `${i + 1}. @${a.split('@')[0]}`).join("\n")}`;
+  await sock.sendMessage(m.key.remoteJid, { text: msg, mentions: admins }, { quoted: m });
+}};
+
+global.commands.staff = { category: "GROUP", desc: "List staff", run: async (m, { sock }) => {
+  if (!m.key.remoteJid.endsWith('@g.us')) return sock.sendMessage(m.key.remoteJid, { text: `❌ Group only` }, { quoted: m });
+  const metadata = await sock.groupMetadata(m.key.remoteJid);
+  const admins = metadata.participants.filter(p => p.admin!== null);
+  const owners = admins.filter(p => p.admin === 'superadmin');
+  const normalAdmins = admins.filter(p => p.admin === 'admin');
+  let text = `👥 *GROUP STAFF*\n\n*Owner:*\n${owners.map(o => `@${o.id.split('@')[0]}`).join('\n')}\n\n*Admins:*\n${normalAdmins.map(a => `@${a.id.split('@')[0]}`).join('\n')}`;
+  await sock.sendMessage(m.key.remoteJid, { text, mentions: admins.map(a => a.id) }, { quoted: m });
+}};
+
+global.commands.groupinfo = { category: "GROUP", desc: "Group info", run: async (m, { sock }) => {
+  if (!m.key.remoteJid.endsWith('@g.us')) return sock.sendMessage(m.key.remoteJid, { text: `❌ Group only` }, { quoted: m });
+  const metadata = await sock.groupMetadata(m.key.remoteJid);
+  const admins = metadata.participants.filter(p => p.admin!== null).length;
+  const desc = metadata.desc || 'No description';
+  const text = `📊 *GROUP INFO*\n\n*Name:* ${metadata.subject}\n*ID:* ${metadata.id}\n*Members:* ${metadata.participants.length}\n*Admins:* ${admins}\n*Created:* ${new Date(metadata.creation * 1000).toLocaleDateString()}\n*Owner:* ${metadata.owner? '@' + metadata.owner.split('@')[0] : 'N/A'}\n\n*Description:*\n${desc}`;
+  await sock.sendMessage(m.key.remoteJid, { text, mentions: metadata.owner? [metadata.owner] : [] }, { quoted: m });
+}};
+
+global.commands.ginfo = { category: "GROUP", desc: "Group info", run: async (m, { sock }) => { return global.commands.groupinfo.run(m, { sock }); }};
+
+global.commands.invite = { category: "GROUP", desc: "Group invite link", run: async (m, { sock, isAdmin }) => {
+  if (!m.key.remoteJid.endsWith('@g.us')) return sock.sendMessage(m.key.remoteJid, { text: `❌ Group only` }, { quoted: m });
+  if (!isAdmin) return sock.sendMessage(m.key.remoteJid, { text: `❌ Admin only` }, { quoted: m });
+  const code = await sock.groupInviteCode(m.key.remoteJid);
+  await sock.sendMessage(m.key.remoteJid, { text: `🔗 *Group Invite*\n\nhttps://chat.whatsapp.com/${code}` }, { quoted: m });
+}};
+
+global.commands.revoke = { category: "GROUP", desc: "Revoke invite link", run: async (m, { sock, isAdmin }) => {
+  if (!m.key.remoteJid.endsWith('@g.us')) return sock.sendMessage(m.key.remoteJid, { text: `❌ Group only` }, { quoted: m });
+  if (!isAdmin) return sock.sendMessage(m.key.remoteJid, { text: `❌ Admin only` }, { quoted: m });
+  await sock.groupRevokeInvite(m.key.remoteJid);
+  await sock.sendMessage(m.key.remoteJid, { text: `✅ Invite link revoked` }, { quoted: m });
+}};
+
+global.commands.kick = { category: "GROUP", desc: "Kick user", run: async (m, { sock, isAdmin }) => {
+  if (!m.key.remoteJid.endsWith('@g.us')) return sock.sendMessage(m.key.remoteJid, { text: `❌ Group only` }, { quoted: m });
+  if (!isAdmin) return sock.sendMessage(m.key.remoteJid, { text: `❌ Admin only` }, { quoted: m });
+  const target = global.tools.getTarget(m);
+  if (!target) return sock.sendMessage(m.key.remoteJid, { text: `❌ Tag user or reply to message` }, { quoted: m });
+  await sock.groupParticipantsUpdate(m.key.remoteJid, [target], 'remove');
+  await sock.sendMessage(m.key.remoteJid, { text: `✅ Kicked @${target.split('@')[0]}`, mentions: [target] }, { quoted: m });
+}};
+
+global.commands.promote = { category: "GROUP", desc: "Promote user", run: async (m, { sock, isAdmin }) => {
+  if (!m.key.remoteJid.endsWith('@g.us')) return sock.sendMessage(m.key.remoteJid, { text: `❌ Group only` }, { quoted: m });
+  if (!isAdmin) return sock.sendMessage(m.key.remoteJid, { text: `❌ Admin only` }, { quoted: m });
+  const target = global.tools.getTarget(m);
+  if (!target) return sock.sendMessage(m.key.remoteJid, { text: `❌ Tag user or reply` }, { quoted: m });
+  const isUserAdmin = await isAdminCheck(sock, m.key.remoteJid, target);
+  if (isUserAdmin) return sock.sendMessage(m.key.remoteJid, { text: `❌ User already admin` }, { quoted: m });
+  await sock.groupParticipantsUpdate(m.key.remoteJid, [target], 'promote');
+  await sock.sendMessage(m.key.remoteJid, { text: `✅ Promoted @${target.split('@')[0]}`, mentions: [target] }, { quoted: m });
+}};
+
+global.commands.demote = { category: "GROUP", desc: "Demote user", run: async (m, { sock, isAdmin }) => {
+  if (!m.key.remoteJid.endsWith('@g.us')) return sock.sendMessage(m.key.remoteJid, { text: `❌ Group only` }, { quoted: m });
+  if (!isAdmin) return sock.sendMessage(m.key.remoteJid, { text: `❌ Admin only` }, { quoted: m });
+  const target = global.tools.getTarget(m);
+  if (!target) return sock.sendMessage(m.key.remoteJid, { text: `❌ Tag user or reply` }, { quoted: m });
+  const isUserAdmin = await isAdminCheck(sock, m.key.remoteJid, target);
+  if (!isUserAdmin) return sock.sendMessage(m.key.remoteJid, { text: `❌ User not admin` }, { quoted: m });
+  await sock.groupParticipantsUpdate(m.key.remoteJid, [target], 'demote');
+  await sock.sendMessage(m.key.remoteJid, { text: `✅ Demoted @${target.split('@')[0]}`, mentions: [target] }, { quoted: m });
+}};
+
+global.commands.mute = { category: "GROUP", desc: "Mute group", run: async (m, { sock, isAdmin }) => {
+  if (!m.key.remoteJid.endsWith('@g.us')) return sock.sendMessage(m.key.remoteJid, { text: `❌ Group only` }, { quoted: m });
+  if (!isAdmin) return sock.sendMessage(m.key.remoteJid, { text: `❌ Admin only` }, { quoted: m });
+  await sock.groupSettingUpdate(m.key.remoteJid, 'announcement');
+  await sock.sendMessage(m.key.remoteJid, { text: `🔇 Group muted. Only admins can send messages.` }, { quoted: m });
+}};
+
+global.commands.unmute = { category: "GROUP", desc: "Unmute group", run: async (m, { sock, isAdmin }) => {
+  if (!m.key.remoteJid.endsWith('@g.us')) return sock.sendMessage(m.key.remoteJid, { text: `❌ Group only` }, { quoted: m });
+  if (!isAdmin) return sock.sendMessage(m.key.remoteJid, { text: `❌ Admin only` }, { quoted: m });
+  await sock.groupSettingUpdate(m.key.remoteJid, 'not_announcement');
+  await sock.sendMessage(m.key.remoteJid, { text: `🔊 Group unmuted. Everyone can send messages.` }, { quoted: m });
+}};
+
+global.commands.glock = { category: "GROUP", desc: "Lock group settings", run: async (m, { sock, isAdmin }) => {
+  if (!m.key.remoteJid.endsWith('@g.us')) return sock.sendMessage(m.key.remoteJid, { text: `❌ Group only` }, { quoted: m });
+  if (!isAdmin) return sock.sendMessage(m.key.remoteJid, { text: `❌ Admin only` }, { quoted: m });
+  await sock.groupSettingUpdate(m.key.remoteJid, 'locked');
+  await sock.sendMessage(m.key.remoteJid, { text: `🔒 Group settings locked. Only admins can edit info.` }, { quoted: m });
+}};
+
+global.commands.gunlock = { category: "GROUP", desc: "Unlock group settings", run: async (m, { sock, isAdmin }) => {
+  if (!m.key.remoteJid.endsWith('@g.us')) return sock.sendMessage(m.key.remoteJid, { text: `❌ Group only` }, { quoted: m });
+  if (!isAdmin) return sock.sendMessage(m.key.remoteJid, { text: `❌ Admin only` }, { quoted: m });
+  await sock.groupSettingUpdate(m.key.remoteJid, 'unlocked');
+  await sock.sendMessage(m.key.remoteJid, { text: `🔓 Group settings unlocked. Everyone can edit info.` }, { quoted: m });
+}};
+
+global.commands.gname = { category: "GROUP", desc: "Change group name", run: async (m, { sock, q, isAdmin }) => {
+  if (!m.key.remoteJid.endsWith('@g.us')) return sock.sendMessage(m.key.remoteJid, { text: `❌ Group only` }, { quoted: m });
+  if (!isAdmin) return sock.sendMessage(m.key.remoteJid, { text: `❌ Admin only` }, { quoted: m });
+  if (!q) return sock.sendMessage(m.key.remoteJid, { text: `❌ Provide new group name` }, { quoted: m });
+  await sock.groupUpdateSubject(m.key.remoteJid, q);
+  await sock.sendMessage(m.key.remoteJid, { text: `✅ Group name changed to: ${q}` }, { quoted: m });
+}};
+
+global.commands.gdesc = { category: "GROUP", desc: "Change group description", run: async (m, { sock, q, isAdmin }) => {
+  if (!m.key.remoteJid.endsWith('@g.us')) return sock.sendMessage(m.key.remoteJid, { text: `❌ Group only` }, { quoted: m });
+  if (!isAdmin) return sock.sendMessage(m.key.remoteJid, { text: `❌ Admin only` }, { quoted: m });
+  if (!q) return sock.sendMessage(m.key.remoteJid, { text: `❌ Provide new description` }, { quoted: m });
+  await sock.groupUpdateDescription(m.key.remoteJid, q);
+  await sock.sendMessage(m.key.remoteJid, { text: `✅ Group description updated` }, { quoted: m });
+}};
+
+global.commands.gpp = { category: "GROUP", desc: "Set group profile pic", run: async (m, { sock, isAdmin }) => {
+  if (!m.key.remoteJid.endsWith('@g.us')) return sock.sendMessage(m.key.remoteJid, { text: `❌ Group only` }, { quoted: m });
+  if (!isAdmin) return sock.sendMessage(m.key.remoteJid, { text: `❌ Admin only` }, { quoted: m });
+  const quoted = m.message?.extendedTextMessage?.contextInfo?.quotedMessage;
+  const imageMsg = quoted?.imageMessage;
+  if (!imageMsg) return sock.sendMessage(m.key.remoteJid, { text: `❌ Reply to an image with gpp` }, { quoted: m });
+  try {
+    await sock.sendMessage(m.key.remoteJid, { text: `⏳ Setting group picture...` }, { quoted: m });
+    const buffer = await downloadMediaMessage({ message: { imageMessage: imageMsg } }, 'buffer', {}, { logger: pino({ level: 'silent' }) });
+    await sock.updateProfilePicture(m.key.remoteJid, buffer);
+    await sock.sendMessage(m.key.remoteJid, { text: `✅ Group profile picture updated` }, { quoted: m });
+  } catch (e) {
+    console.error('GPP Error:', e);
+    await sock.sendMessage(m.key.remoteJid, { text: `❌ Failed. Make sure bot is admin.` }, { quoted: m });
+  }
+}};
+
+global.commands.removegpp = { category: "GROUP", desc: "Remove group pic", run: async (m, { sock, isAdmin }) => {
+  if (!m.key.remoteJid.endsWith('@g.us')) return sock.sendMessage(m.key.remoteJid, { text: `❌ Group only` }, { quoted: m });
+  if (!isAdmin) return sock.sendMessage(m.key.remoteJid, { text: `❌ Admin only` }, { quoted: m });
+  await sock.removeProfilePicture(m.key.remoteJid);
+  await sock.sendMessage(m.key.remoteJid, { text: `✅ Group profile picture removed` }, { quoted: m });
+}};
+
+global.commands.leave = { category: "GROUP", desc: "Leave group", run: async (m, { sock }) => {
+  if (!m.key.remoteJid.endsWith('@g.us')) return sock.sendMessage(m.key.remoteJid, { text: `❌ Group only` }, { quoted: m });
+  await sock.sendMessage(m.key.remoteJid, { text: `👋 Leaving group...` }, { quoted: m });
+  await sock.groupLeave(m.key.remoteJid);
+}};
+
+global.commands.joinrequests = { category: "GROUP", desc: "Handle join requests", run: async (m, { sock, q, isAdmin }) => {
+  if (!m.key.remoteJid.endsWith('@g.us')) return sock.sendMessage(m.key.remoteJid, { text: `❌ Group only` }, { quoted: m });
+  if (!isAdmin) return sock.sendMessage(m.key.remoteJid, { text: `❌ Admin only` }, { quoted: m });
+  const requests = await sock.groupRequestParticipantsList(m.key.remoteJid);
+  if (!requests.length) return sock.sendMessage(m.key.remoteJid, { text: `❌ No pending join requests` }, { quoted: m });
+  if (q === 'approve all') {
+    await sock.sendMessage(m.key.remoteJid, { text: `✅ Approving ${requests.length} requests...` }, { quoted: m });
+    for (let req of requests) {
+      await sock.groupRequestParticipantsUpdate(m.key.remoteJid, [req.jid], "approve");
+      await global.tools.sleep(900);
+    }
+  } else if (q === 'reject all') {
+    await sock.sendMessage(m.key.remoteJid, { text: `❌ Rejecting ${requests.length} requests...` }, { quoted: m });
+    for (let req of requests) {
+      await sock.groupRequestParticipantsUpdate(m.key.remoteJid, [req.jid], "reject");
+      await global.tools.sleep(900);
+    }
+  } else {
+    const list = requests.map((r, i) => `${i + 1}. @${r.jid.split('@')[0]}\n• Via: ${r.request_method}\n• Time: ${new Date(r.request_time * 1000).toLocaleString()}`).join('\n\n');
+    await sock.sendMessage(m.key.remoteJid, { text: `📥 *Join Requests: ${requests.length}*\n\n${list}\n\nUse: joinrequests approve all\nOr: joinrequests reject all`, mentions: requests.map(r => r.jid) }, { quoted: m });
+  }
+}};
+
+global.commands.warn = { category: "GROUP", desc: "Warn user", run: async (m, { sock, isAdmin }) => {
+  if (!m.key.remoteJid.endsWith('@g.us')) return sock.sendMessage(m.key.remoteJid, { text: `❌ Group only` }, { quoted: m });
+  if (!isAdmin) return sock.sendMessage(m.key.remoteJid, { text: `❌ Admin only` }, { quoted: m });
+  const target = global.tools.getTarget(m);
+  if (!target) return sock.sendMessage(m.key.remoteJid, { text: `❌ Tag user or reply` }, { quoted: m });
+  await sock.sendMessage(m.key.remoteJid, { text: `⚠️ @${target.split('@')[0]} you have been warned!`, mentions: [target] }, { quoted: m });
+}};
+
+global.commands.setwelcome = { category: "GROUP", desc: "Set welcome message", run: async (m, { sock, q, isAdmin }) => {
+  if (!m.key.remoteJid.endsWith('@g.us')) return sock.sendMessage(m.key.remoteJid, { text: `❌ Group only` }, { quoted: m });
+  if (!isAdmin) return sock.sendMessage(m.key.remoteJid, { text: `❌ Admin only` }, { quoted: m });
+  if (!q) return sock.sendMessage(m.key.remoteJid, { text: `❌ Provide message. Use @user for mention` }, { quoted: m });
+  config.welcomeMsg = q;
+  await sock.sendMessage(m.key.remoteJid, { text: `✅ Welcome message set` }, { quoted: m });
+}};
+
+global.commands.setgoodbye = { category: "GROUP", desc: "Set goodbye message", run: async (m, { sock, q, isAdmin }) => {
+  if (!m.key.remoteJid.endsWith('@g.us')) return sock.sendMessage(m.key.remoteJid, { text: `❌ Group only` }, { quoted: m });
+  if (!isAdmin) return sock.sendMessage(m.key.remoteJid, { text: `❌ Admin only` }, { quoted: m });
+  if (!q) return sock.sendMessage(m.key.remoteJid, { text: `❌ Provide message. Use @user for mention` }, { quoted: m });
+  config.goodbyeMsg = q;
+  await sock.sendMessage(m.key.remoteJid, { text: `✅ Goodbye message set` }, { quoted: m });
+}};
+
+global.commands.poll = { category: "GROUP", desc: "Create poll", run: async (m, { sock, q, isAdmin }) => {
+  if (!m.key.remoteJid.endsWith('@g.us')) return sock.sendMessage(m.key.remoteJid, { text: `❌ Group only` }, { quoted: m });
+  if (!isAdmin) return sock.sendMessage(m.key.remoteJid, { text: `❌ Admin only` }, { quoted: m });
+  if (!q.includes('|')) return sock.sendMessage(m.key.remoteJid, { text: `❌ Usage: poll Question | Option1 | Option2 | Option3` }, { quoted: m });
+  const [question,...options] = q.split('|').map(s => s.trim());
+  await sock.sendMessage(m.key.remoteJid, { poll: { name: question, values: options, selectableCount: 1 } }, { quoted: m });
+}};
+
+global.commands.announce = { category: "GROUP", desc: "Announcement", run: async (m, { sock, q, isAdmin }) => {
+  if (!m.key.remoteJid.endsWith('@g.us')) return sock.sendMessage(m.key.remoteJid, { text: `❌ Group only` }, { quoted: m });
+  if (!isAdmin) return sock.sendMessage(m.key.remoteJid, { text: `❌ Admin only` }, { quoted: m });
+  if (!q) return sock.sendMessage(m.key.remoteJid, { text: `❌ Provide announcement` }, { quoted: m });
+  const metadata = await sock.groupMetadata(m.key.remoteJid);
+  const jids = metadata.participants.map(p => p.id);
+  await sock.sendMessage(m.key.remoteJid, { text: `📢 *ANNOUNCEMENT*\n\n${q}`, mentions: jids }, { quoted: m });
+}};
+
+global.commands.disappearing = { category: "GROUP", desc: "Disappearing messages", run: async (m, { sock, q, isAdmin }) => {
+  if (!m.key.remoteJid.endsWith('@g.us')) return sock.sendMessage(m.key.remoteJid, { text: `❌ Group only` }, { quoted: m });
+  if (!isAdmin) return sock.sendMessage(m.key.remoteJid, { text: `❌ Admin only` }, { quoted: m });
+  const times = { 'off': 0, '24h': 86400, '7d': 604800, '90d': 7776000 };
+  if (!times[q]) return sock.sendMessage(m.key.remoteJid, { text: `❌ Usage: disappearing off/24h/7d/90d` }, { quoted: m });
+  await sock.groupToggleEphemeral(m.key.remoteJid, times[q]);
+  await sock.sendMessage(m.key.remoteJid, { text: `✅ Disappearing messages: ${q}` }, { quoted: m });
+}};
+
+global.commands.link = { category: "GROUP", desc: "Get group link", run: async (m, { sock, isAdmin }) => {
+  if (!m.key.remoteJid.endsWith('@g.us')) return sock.sendMessage(m.key.remoteJid, { text: `❌ Group only` }, { quoted: m });
+  if (!isAdmin) return sock.sendMessage(m.key.remoteJid, { text: `❌ Admin only` }, { quoted: m });
+  const code = await sock.groupInviteCode(m.key.remoteJid);
+  await sock.sendMessage(m.key.remoteJid, { text: `https://chat.whatsapp.com/${code}` }, { quoted: m });
+}};
+
+global.commands.resetlink = { category: "GROUP", desc: "Reset group link", run: async (m, { sock, isAdmin }) => {
+  if (!m.key.remoteJid.endsWith('@g.us')) return sock.sendMessage(m.key.remoteJid, { text: `❌ Group only` }, { quoted: m });
+  if (!isAdmin) return sock.sendMessage(m.key.remoteJid, { text: `❌ Admin only` }, { quoted: m });
+  await sock.groupRevokeInvite(m.key.remoteJid);
+  const code = await sock.groupInviteCode(m.key.remoteJid);
+  await sock.sendMessage(m.key.remoteJid, { text: `✅ Link reset\nNew: https://chat.whatsapp.com/${code}` }, { quoted: m });
+}};
+
+global.commands.adminsonly = { category: "GROUP", desc: "Admins only mode", run: async (m, { sock, isAdmin }) => {
+  if (!m.key.remoteJid.endsWith('@g.us')) return sock.sendMessage(m.key.remoteJid, { text: `❌ Group only` }, { quoted: m });
+  if (!isAdmin) return sock.sendMessage(m.key.remoteJid, { text: `❌ Admin only` }, { quoted: m });
+  await sock.groupSettingUpdate(m.key.remoteJid, 'announcement');
+  await sock.sendMessage(m.key.remoteJid, { text: `🔒 Admins only mode enabled` }, { quoted: m });
+}};
+
+global.commands.everyone = { category: "GROUP", desc: "Everyone can send", run: async (m, { sock, isAdmin }) => {
+  if (!m.key.remoteJid.endsWith('@g.us')) return sock.sendMessage(m.key.remoteJid, { text: `❌ Group only` }, { quoted: m });
+  if (!isAdmin) return sock.sendMessage(m.key.remoteJid, { text: `❌ Admin only` }, { quoted: m });
+  await sock.groupSettingUpdate(m.key.remoteJid, 'not_announcement');
+  await sock.sendMessage(m.key.remoteJid, { text: `🔓 Everyone can send messages` }, { quoted: m });
+}};
+
+global.commands.settingslock = { category: "GROUP", desc: "Lock settings", run: async (m, { sock, isAdmin }) => {
+  if (!m.key.remoteJid.endsWith('@g.us')) return sock.sendMessage(m.key.remoteJid, { text: `❌ Group only` }, { quoted: m });
+  if (!isAdmin) return sock.sendMessage(m.key.remoteJid, { text: `❌ Admin only` }, { quoted: m });
+  await sock.groupSettingUpdate(m.key.remoteJid, 'locked');
+  await sock.sendMessage(m.key.remoteJid, { text: `🔒 Settings locked` }, { quoted: m });
+}};
+
+global.commands.settingsunlock = { category: "GROUP", desc: "Unlock settings", run: async (m, { sock, isAdmin }) => {
+  if (!m.key.remoteJid.endsWith('@g.us')) return sock.sendMessage(m.key.remoteJid, { text: `❌ Group only` }, { quoted: m });
+  if (!isAdmin) return sock.sendMessage(m.key.remoteJid, { text: `❌ Admin only` }, { quoted: m });
+  await sock.groupSettingUpdate(m.key.remoteJid, 'unlocked');
+  await sock.sendMessage(m.key.remoteJid, { text: `🔓 Settings unlocked` }, { quoted: m });
+}};
+
+global.commands.groupclose = { category: "GROUP", desc: "Close group", run: async (m, { sock, isAdmin }) => {
+  if (!m.key.remoteJid.endsWith('@g.us')) return sock.sendMessage(m.key.remoteJid, { text: `❌ Group only` }, { quoted: m });
+  if (!isAdmin) return sock.sendMessage(m.key.remoteJid, { text: `❌ Admin only` }, { quoted: m });
+  await sock.groupSettingUpdate(m.key.remoteJid, 'announcement');
+  await sock.sendMessage(m.key.remoteJid, { text: `🔒 Group closed` }, { quoted: m });
+}};
+
+global.commands.groupopen = { category: "GROUP", desc: "Open group", run: async (m, { sock, isAdmin }) => {
+  if (!m.key.remoteJid.endsWith('@g.us')) return sock.sendMessage(m.key.remoteJid, { text: `❌ Group only` }, { quoted: m });
+  if (!isAdmin) return sock.sendMessage(m.key.remoteJid, { text: `❌ Admin only` }, { quoted: m });
+  await sock.groupSettingUpdate(m.key.remoteJid, 'not_announcement');
+  await sock.sendMessage(m.key.remoteJid, { text: `🔓 Group opened` }, { quoted: m });
+}};
+
+global.commands.del = { category: "GROUP", desc: "Delete message", run: async (m, { sock, isAdmin }) => {
+  if (!m.key.remoteJid.endsWith('@g.us')) return sock.sendMessage(m.key.remoteJid, { text: `❌ Group only` }, { quoted: m });
+  if (!isAdmin) return sock.sendMessage(m.key.remoteJid, { text: `❌ Admin only` }, { quoted: m });
+  if (!m.message.extendedTextMessage?.contextInfo?.stanzaId) return sock.sendMessage(m.key.remoteJid, { text: `❌ Reply to message to delete` }, { quoted: m });
+  await sock.sendMessage(m.key.remoteJid, { delete: { remoteJid: m.key.remoteJid, fromMe: false, id: m.message.extendedTextMessage.contextInfo.stanzaId, participant: m.message.extendedTextMessage.contextInfo.participant } });
+}};
+
+// ------------------- WHATSAPP 8 - NO OWNER ONLY -------------------
+global.commands.online = { category: "WHATSAPP", desc: "Change online privacy", run: async (m, { sock, q }) => {
+  if (!q) return sock.sendMessage(m.key.remoteJid, { text: `_*Example:-* online all_\n_to change *online* privacy settings_` }, { quoted: m });
+  const available_privacy = ['all', 'match_last_seen'];
+  if (!available_privacy.includes(q)) return sock.sendMessage(m.key.remoteJid, { text: `_action must be *${available_privacy.join('/')}* values_` }, { quoted: m });
+  await sock.updateOnlinePrivacy(q);
+  await sock.sendMessage(m.key.remoteJid, { text: `_Privacy Updated to *${q}*_` }, { quoted: m });
+}};
+
+global.commands.lastseen = { category: "WHATSAPP", desc: "Change last seen privacy", run: async (m, { sock, q }) => {
+  if (!q) return sock.sendMessage(m.key.remoteJid, { text: `_*Example:-* lastseen all_\n_to change last seen privacy settings_` }, { quoted: m });
+  const available_privacy = ['all', 'contacts', 'contact_blacklist', 'none'];
+  if (!available_privacy.includes(q)) return sock.sendMessage(m.key.remoteJid, { text: `_action must be *${available_privacy.join('/')}* values_` }, { quoted: m });
+  await sock.updateLastSeenPrivacy(q);
+  await sock.sendMessage(m.key.remoteJid, { text: `_Privacy settings *last seen* Updated to *${q}*_` }, { quoted: m });
+}};
+
+global.commands.profile = { category: "WHATSAPP", desc: "Change profile pic privacy", run: async (m, { sock, q }) => {
+  if (!q) return sock.sendMessage(m.key.remoteJid, { text: `_*Example:-* profile all_\n_to change *profile picture* privacy settings_` }, { quoted: m });
+  const available_privacy = ['all', 'contacts', 'contact_blacklist', 'none'];
+  if (!available_privacy.includes(q)) return sock.sendMessage(m.key.remoteJid, { text: `_action must be *${available_privacy.join('/')}* values_` }, { quoted: m });
+  await sock.updateProfilePicturePrivacy(q);
+  await sock.sendMessage(m.key.remoteJid, { text: `_Privacy Updated to *${q}*_` }, { quoted: m });
+}};
+
+global.commands.status = { category: "WHATSAPP", desc: "Change status privacy", run: async (m, { sock, q }) => {
+  if (!q) return sock.sendMessage(m.key.remoteJid, { text: `_*Example:-* status all_\n_to change *status* privacy settings_` }, { quoted: m });
+  const available_privacy = ['all', 'contacts', 'contact_blacklist', 'none'];
+  if (!available_privacy.includes(q)) return sock.sendMessage(m.key.remoteJid, { text: `_action must be *${available_privacy.join('/')}* values_` }, { quoted: m });
+  await sock.updateStatusPrivacy(q);
+  await sock.sendMessage(m.key.remoteJid, { text: `_Privacy Updated to *${q}*_` }, { quoted: m });
+}};
+
+global.commands.readreceipt = { category: "WHATSAPP", desc: "Change read receipt privacy", run: async (m, { sock, q }) => {
+  if (!q) return sock.sendMessage(m.key.remoteJid, { text: `_*Example:-* readreceipt all_\n_to change *read and receipts message* privacy settings_` }, { quoted: m });
+  const available_privacy = ['all', 'none'];
+  if (!available_privacy.includes(q)) return sock.sendMessage(m.key.remoteJid, { text: `_action must be *${available_privacy.join('/')}* values_` }, { quoted: m });
+  await sock.updateReadReceiptsPrivacy(q);
+  await sock.sendMessage(m.key.remoteJid, { text: `_Privacy Updated to *${q}*_` }, { quoted: m });
+}};
+
+global.commands.groupadd = { category: "WHATSAPP", desc: "Change group add privacy", run: async (m, { sock, q }) => {
+  if (!q) return sock.sendMessage(m.key.remoteJid, { text: `_*Example:-* groupadd all_\n_to change *group add* privacy settings_` }, { quoted: m });
+  const available_privacy = ['all', 'contacts', 'contact_blacklist', 'none'];
+  if (!available_privacy.includes(q)) return sock.sendMessage(m.key.remoteJid, { text: `_action must be *${available_privacy.join('/')}* values_` }, { quoted: m });
+  await sock.updateGroupsAddPrivacy(q);
+  await sock.sendMessage(m.key.remoteJid, { text: `_Privacy Updated to *${q}*_` }, { quoted: m });
+}};
+
+global.commands.getprivacy = { category: "WHATSAPP", desc: "Get privacy settings", run: async (m, { sock }) => {
+  const { readreceipts, profile, status, online, last, groupadd, calladd } = await sock.fetchPrivacySettings(true);
+  const msg = `Privacy Information:\n---------------------\nName : ${sock.user.name}\nOnline Status : ${online}\nProfile : ${profile}\nLast Seen : ${last}\nRead Receipts : ${readreceipts}\nStatus Privacy : ${status}\nGroup Addition : ${groupadd}\nCall Addition : ${calladd}`;
+  let img;
+  try {
+    img = { url: await sock.profilePictureUrl(m.key.remoteJid, 'image') };
+  } catch (e) {
+    img = { url: "https://i.ibb.co/sFjZh7S/6883ac4d6a92.jpg" };
+  }
+  await sock.sendMessage(m.key.remoteJid, { image: img, caption: msg }, { quoted: m });
+}};
+
+global.commands.dlt = { category: "WHATSAPP", desc: "Delete replied message", run: async (m, { sock }) => {
+  if (!m.message?.extendedTextMessage?.contextInfo?.quotedMessage) return sock.sendMessage(m.key.remoteJid, { text: "Reply to a message to delete it." }, { quoted: m });
+  try {
+    await sock.sendMessage(m.key.remoteJid, {
+      delete: {
+        remoteJid: m.key.remoteJid,
+        fromMe: false,
+        id: m.message.extendedTextMessage.contextInfo.stanzaId,
+        participant: m.message.extendedTextMessage.contextInfo.participant || m.message.extendedTextMessage.contextInfo.remoteJid
+      }
+    });
+    await sock.sendMessage(m.key.remoteJid, {
+      delete: {
+        remoteJid: m.key.remoteJid,
+        fromMe: true,
+        id: m.key.id
+      }
+    });
+  } catch (e) {}
+}};
+
+// ------------------- APP 13 - NO OWNER ONLY -------------------
+global.commands.update = { category: "APP", desc: "Update bot", run: async (m, { sock, q }) => {
+  await git.fetch();
+  var commits = await git.log(['main' + "..origin/" + 'main']);
+  let message = "*_New updates available!_*\n\n";
+  commits["all"].map((e, i) => message += "```" + `${i + 1}. ${e.message}\n[${e.date.substring(0, 10)}]\n` + "```");
+  if (q === 'now') {
+    if (commits.total === 0) return sock.sendMessage(m.key.remoteJid, { text: "```Bot is up-to-date!```" }, { quoted: m });
+    await sock.sendMessage(m.key.remoteJid, { text: '_*Updating...*_' }, { quoted: m });
+    await git.pull();
+    await sock.sendMessage(m.key.remoteJid, { text: "_*Bot updated!*_\n_Restarting..._" }, { quoted: m });
+    setTimeout(() => process.exit(0), 3000);
+  } else {
+    await sock.sendMessage(m.key.remoteJid, { text: commits.total!== 0? message + `\n_Use 'update now' to update the bot._` : "```Bot is up-to-date!```" }, { quoted: m });
+  }
+}};
+
+global.commands.platform = { category: "APP", desc: "Server platform info", run: async (m, { sock }) => {
+  let SERVER=process.env['PWD']?.includes('codesandbox')?'codesandbox':process.env['REPLIT_USER']?.includes('replit')?'REPLIT':process.env['DYNO']?'HEROKU':process['env']['AWS_REGION']?'AWS':process.env['TERMUX_VERSION']?'TERMUX':process.env['KOYEB_APP_ID']?'KOYEB':process.env['RENDER']?'RENDER':process.env['RAILWAY_SERVICE_NAME']?'RAILWAY':process.env['DIGITALOCEAN_APP_NAME']?'DIGITALOCEAN':process.env['FLY_IO']?'FLY_IO':'VPS';
+  await sock.sendMessage(m.key.remoteJid, { text: `*Platform Information*\n\n_*Server: ${SERVER}*_` }, { quoted: m });
+}};
+
+global.commands.restart = { category: "APP", desc: "Restart bot", run: async (m, { sock }) => {
+  await sock.sendMessage(m.key.remoteJid, { text: `Restarting...` }, { quoted: m });
+  exec("pm2 restart all || npm restart", async (error, stdout, stderr) => {
+    if (error) return sock.sendMessage(m.key.remoteJid, { text: `Error: ${error}` }, { quoted: m });
+  });
+}};
+
+global.commands.setvar = { category: "APP", desc: "Set env variable", run: async (m, { sock, q }) => {
+  if (!q) return sock.sendMessage(m.key.remoteJid, { text: `Example: setvar WORK_TYPE=public` }, { quoted: m });
+  const [key, value] = q.split("=");
+  if (!key ||!value) return sock.sendMessage(m.key.remoteJid, { text: `Invalid format. Use: setvar KEY=VALUE` }, { quoted: m });
+  process.env[key.trim().toUpperCase()] = value.trim();
+  await sock.sendMessage(m.key.remoteJid, { text: `✅ Variable ${key.trim().toUpperCase()} set to ${value.trim()}` }, { quoted: m });
+}};
+
+global.commands.delvar = { category: "APP", desc: "Delete env variable", run: async (m, { sock, q }) => {
+  if (!q) return sock.sendMessage(m.key.remoteJid, { text: `Example: delvar WORK_TYPE` }, { quoted: m });
+  const key = q.trim().toUpperCase();
+  if (process.env[key]) {
+    delete process.env[key];
+    await sock.sendMessage(m.key.remoteJid, { text: `✅ Variable ${key} deleted` }, { quoted: m });
+  } else {
+    await sock.sendMessage(m.key.remoteJid, { text: `❌ Variable ${key} not found` }, { quoted: m });
+  }
+}};
+
+global.commands.getvar = { category: "APP", desc: "Get env variable", run: async (m, { sock, q }) => {
+  if (!q) return sock.sendMessage(m.key.remoteJid, { text: `Example: getvar WORK_TYPE` }, { quoted: m });
+  const value = process.env[q.trim().toUpperCase()];
+  await sock.sendMessage(m.key.remoteJid, { text: value? `_${q.trim().toUpperCase()}: ${value}_` : `❌ Variable not found` }, { quoted: m });
+}};
+
+global.commands.getallvars = { category: "APP", desc: "Get all env variables", run: async (m, { sock }) => {
+  const vars = Object.keys(process.env).map((e, i) => `\`\`${i + 1}. ${e}: ${process.env[e]}\`\``).join('\n');
+  await sock.sendMessage(m.key.remoteJid, { text: vars || 'No variables set' }, { quoted: m });
+}};
+
+global.commands.mode = { category: "APP", desc: "Change work mode", run: async (m, { sock, q }) => {
+  if (q?.toLowerCase() == "public" || q?.toLowerCase() == "private") {
+    config.mode = q.toLowerCase();
+    process.env.WORK_TYPE = q.toLowerCase();
+    await sock.sendMessage(m.key.remoteJid, { text: `_Mode Successfully Changed To: ${q}_` }, { quoted: m });
+  } else {
+    await sock.sendMessage(m.key.remoteJid, { text: `_*Mode manager*_\n_Current mode: ${config.mode}_\n_Use mode public/private_` }, { quoted: m });
+  }
+}};
+
+global.commands.settings = { category: "APP", desc: "Settings menu", run: async (m, { sock }) => {
+  const settingsMenu = [
+    { title: "Auto read all messages", env_var: "READ_MESSAGES" },
+    { title: "Auto status react", env_var: "STATUS_REACTION" },
+    { title: "Auto read status updates", env_var: "AUTO_STATUS_VIEW" },
+    { title: "Auto reject calls", env_var: "REJECT_CALL" },
+    { title: "Always online", env_var: "ALWAYS_ONLINE" },
+    { title: "Disable bot in PM", env_var: "DISABLE_PM" },
+    { title: "PM Auto blocker", env_var: "PM_BLOCK" },
+    { title: "Bot Work type", env_var: "WORK_TYPE" }
+  ];
+  const menu = settingsMenu.map((e, i) => `_${i + 1}. ${e.title}_`).join("\n");
+  await sock.sendMessage(m.key.remoteJid, { text: `*_Settings Configuration Menu_*\n\n${menu}\n\n_Reply with: settings on/off number_\nExample: settings on 1` }, { quoted: m });
+}};
+
+global.commands.setsudo = { category: "APP", desc: "Add sudo user", run: async (m, { sock, q }) => {
+  let newSudo = m.message?.extendedTextMessage?.contextInfo?.participant?.split("@")[0] || m.message?.extendedTextMessage?.contextInfo?.mentionedJid?.[0]?.split("@")[0] || q?.replace(/[^0-9]/g, "");
+  if (!newSudo) return sock.sendMessage(m.key.remoteJid, { text: "*Need reply/mention/number*" }, { quoted: m });
+  let oldSudo = config.SUDO?.split(",") || [];
+  if (oldSudo.includes(newSudo)) return sock.sendMessage(m.key.remoteJid, { text: "_User is already a sudo_" }, { quoted: m });
+  oldSudo.push(newSudo);
+  config.SUDO = oldSudo.join(",");
+  process.env.SUDO = config.SUDO;
+  global.owner = [config.ownerNumber,...oldSudo];
+  await sock.sendMessage(m.key.remoteJid, { text: `_Added @${newSudo} as sudo_`, mentions: [`${newSudo}@s.whatsapp.net`] }, { quoted: m });
+}};
+
+global.commands.delsudo = { category: "APP", desc: "Remove sudo user", run: async (m, { sock, q }) => {
+  let delSudo = m.message?.extendedTextMessage?.contextInfo?.participant?.split("@")[0] || m.message?.extendedTextMessage?.contextInfo?.mentionedJid?.[0]?.split("@")[0] || q?.replace(/[^0-9]/g, "");
+  if (!delSudo) return sock.sendMessage(m.key.remoteJid, { text: "*Need reply/mention/number*" }, { quoted: m });
+  let oldSudo = config.SUDO?.split(",") || [];
+  if (!oldSudo.includes(delSudo)) return sock.sendMessage(m.key.remoteJid, { text: "_User is not a sudo_" }, { quoted: m });
+  oldSudo = oldSudo.filter(num => num!== delSudo);
+  config.SUDO = oldSudo.join(",");
+  process.env.SUDO = config.SUDO;
+  global.owner = [config.ownerNumber,...oldSudo];
+  await sock.sendMessage(m.key.remoteJid, { text: `_Removed @${delSudo} from sudo_`, mentions: [`${delSudo}@s.whatsapp.net`] }, { quoted: m });
+}};
+
+global.commands.getsudo = { category: "APP", desc: "List sudo users", run: async (m, { sock }) => {
+  let sudoList = config.SUDO?.split(",").filter(x => x.trim()!== "") || [];
+  if (sudoList.length === 0) return sock.sendMessage(m.key.remoteJid, { text: "_No sudo users found_" }, { quoted: m });
+  let mentionList = sudoList.map(num => `${num}@s.whatsapp.net`);
+  let textList = sudoList.map((num, i) => `${i + 1}. ${num}`).join("\n");
+  await sock.sendMessage(m.key.remoteJid, { text: `*Current SUDO Users:*\n\n${textList}`, mentions: mentionList }, { quoted: m });
+}};
+
+// ------------------- DOWNLOADER 10 -------------------
+global.commands.insta = { category: "DOWNLOADER", desc: "Instagram downloader", run: async (m, { sock, q }) => {
+  q = q || m.message?.extendedTextMessage?.contextInfo?.quotedMessage?.conversation;
+  if (!q) return sock.sendMessage(m.key.remoteJid, { text: `❌ Provide Instagram URL` }, { quoted: m });
+  try {
+    await sock.sendMessage(m.key.remoteJid, { react: { text: '⬇️', key: m.key } });
+    let response = await axios.get(config.API + "/api/downloader/igdl?url=" + q);
+    for (let i of response.data.data) {
+      await sock.sendMessage(m.key.remoteJid, { [i.type]: { url: i.url } }, { quoted: m });
+    }
+    await sock.sendMessage(m.key.remoteJid, { react: { text: '✅', key: m.key } });
+  } catch (e) {
+    console.log(e);
+    await sock.sendMessage(m.key.remoteJid, { react: { text: '❌', key: m.key } });
+  }
+}};
+
+global.commands.img = { category: "DOWNLOADER", desc: "Google Image search", run: async (m, { sock, q }) => {
+  if (!q) return sock.sendMessage(m.key.remoteJid, { text: "Enter Query,Number" }, { quoted: m });
+  try {
+    const gis = require("g-i-s");
+    async function gimage(query, amount = 5) {
+      let list = [];
+      return new Promise((resolve, reject) => {
+        gis(query, async (error, result) => {
+          for (var i = 0; i < (result.length < amount? result.length : amount); i++) {
+            list.push(result[i].url);
+          }
+          resolve(list);
+        });
+      });
+    }
+    let [query, amount] = q.split(",");
+    let result = await gimage(query, amount || 5);
+    await sock.sendMessage(m.key.remoteJid, { text: `_Downloading ${amount || 5} images for ${query}_` }, { quoted: m });
+    for (let i of result) {
+      await sock.sendMessage(m.key.remoteJid, { image: { url: i } }, { quoted: m });
+      await global.tools.sleep(1000);
+    }
+  } catch (e) {
+    console.log(e);
+  }
+}};
+
+global.commands.pintrest = { category: "DOWNLOADER", desc: "Pinterest downloader", run: async (m, { sock, q }) => {
+  try {
+    let match = q || m.message?.extendedTextMessage?.contextInfo?.quotedMessage?.conversation;
+    if (!match) return sock.sendMessage(m.key.remoteJid, { text: `❌ Provide Pinterest URL` }, { quoted: m });
+    await sock.sendMessage(m.key.remoteJid, { react: { text: '⬇️', key: m.key } });
+    const result = await axios.get(config.API + "/api/downloader/pin?url=" + match);
+    await sock.sendMessage(m.key.remoteJid, { image: { url: result.data.data.url }, caption: result.data.data.created_at }, { quoted: m });
+    await sock.sendMessage(m.key.remoteJid, { react: { text: '✅', key: m.key } });
+  } catch (error) {
+    await sock.sendMessage(m.key.remoteJid, { react: { text: '❌', key: m.key } });
+    console.error(error);
+  }
+}};
+
+global.commands.fb = { category: "DOWNLOADER", desc: "Facebook downloader", run: async (m, { sock, q }) => {
+  try {
+    let match = q || m.message?.extendedTextMessage?.contextInfo?.quotedMessage?.conversation;
+    if (!match) return sock.sendMessage(m.key.remoteJid, { text: `❌ Provide Facebook URL` }, { quoted: m });
+    await sock.sendMessage(m.key.remoteJid, { react: { text: '⬇️', key: m.key } });
+    const data = await axios.get(config.API + "/api/downloader/fbdl?url=" + match);
+    await sock.sendMessage(m.key.remoteJid, { video: { url: data.data.data.high }, caption: data.data.data.title }, { quoted: m });
+    await sock.sendMessage(m.key.remoteJid, { react: { text: '✅', key: m.key } });
+  } catch (error) {
+    await sock.sendMessage(m.key.remoteJid, { react: { text: '❌', key: m.key } });
+  }
+}};
+    const url = await axios.get(config.API + "/api/downloader/spotify?url=" + play.link);
+    await sock.sendMessage(m.key.remoteJid, { audio: { url: url.data.data.download }, mimetype: "audio/mpeg" }, { quoted: m });
+    await sock.sendMessage(m.key.remoteJid, { react: { text: '✅', key: m.key } });
+  } catch (error) {
+    await sock.sendMessage(m.key.remoteJid, { react: { text: '❌', key: m.key } });
+  }
+}};
+
+global.commands.spotifydl = { category: "DOWNLOADER", desc: "Spotify URL download", run: async (m, { sock, q }) => {
+  try {
+    q = q || m.message?.extendedTextMessage?.contextInfo?.quotedMessage?.conversation;
+    if(!q) return sock.sendMessage(m.key.remoteJid, { text: `❌ Provide Spotify URL` }, { quoted: m });
+    await sock.sendMessage(m.key.remoteJid, { react: { text: '⬇️', key: m.key } });
+    const url = await axios.get(config.API + "/api/downloader/spotify?url=" + q);
+    await sock.sendMessage(m.key.remoteJid, { audio: { url: url.data.data.download }, mimetype: "audio/mpeg" }, { quoted: m });
+    await sock.sendMessage(m.key.remoteJid, { react: { text: '✅', key: m.key } });
+  } catch (error) {
+    await sock.sendMessage(m.key.remoteJid, { react: { text: '❌', key: m.key } });
+  }
+}};
+
+global.commands.terabox = { category: "DOWNLOADER", desc: "Terabox downloader", run: async (m, { sock, q }) => {
+  try {
+    let match = q || m.message?.extendedTextMessage?.contextInfo?.quotedMessage?.conversation;
+    if (!match) return sock.sendMessage(m.key.remoteJid, { text: `❌ Provide TeraBox URL` }, { quoted: m });
+    await sock.sendMessage(m.key.remoteJid, { react: { text: '⬇️', key: m.key } });
+    const { data } = await axios.get(config.API + "/api/downloader/terrabox?url=" + match);
+    await sock.sendMessage(m.key.remoteJid, { document: { url: data.data.dlink }, fileName: data.data.filename, mimetype: "application/zip" }, { quoted: m });
+    await sock.sendMessage(m.key.remoteJid, { react: { text: '✅', key: m.key } });
+  } catch (error) {
+    await sock.sendMessage(m.key.remoteJid, { react: { text: '❌', key: m.key } });
+    console.error(error);
+  }
+}};
+
+global.commands.gitclone = { category: "DOWNLOADER", desc: "GitHub repo downloader", run: async (m, { sock, q }) => {
+  try {
+    let match = q || m.message?.extendedTextMessage?.contextInfo?.quotedMessage?.conversation;
+    if (!match) return sock.sendMessage(m.key.remoteJid, { text: `❌ Provide GitHub URL` }, { quoted: m });
+    await sock.sendMessage(m.key.remoteJid, { react: { text: '⬇️', key: m.key } });
+    let user = match.split("/")[3];
+    let repo = match.split("/")[4];
+    await sock.sendMessage(m.key.remoteJid, { text: `📦 Downloading ${repo}...` }, { quoted: m });
+    await sock.sendMessage(m.key.remoteJid, {
+      document: { url: `https://api.github.com/repos/${user}/${repo}/zipball` },
+      fileName: `${repo}.zip`,
+      mimetype: "application/zip"
+    }, { quoted: m });
+    await sock.sendMessage(m.key.remoteJid, { react: { text: '✅', key: m.key } });
+  } catch (error) {
+    await sock.sendMessage(m.key.remoteJid, { react: { text: '❌', key: m.key } });
+    console.error(error);
+  }
+}};
+
+// ------------------- BOT STARTUP & 24/7 ONLINE - NO QR CODE -------------------
+async function startBot() {
+  const { state, saveCreds } = await useMultiFileAuthState(config.sessionDir);
+  const sock = makeWASocket({
+    logger: pino({ level: 'silent' }),
+    printQRInTerminal: false, // QR REMOVED
+    auth: state,
+    browser: Browsers.macOS('Desktop'),
+    syncFullHistory: false,
+    markOnlineOnConnect: true // 24/7 ONLINE
+  });
 
   sock.ev.on('creds.update', saveCreds);
 
-  sock.ev.on('connection.update', async (update) => {
+  sock.ev.on('connection.update', (update) => {
     const { connection, lastDisconnect } = update;
     if (connection === 'close') {
       const shouldReconnect = lastDisconnect?.error?.output?.statusCode!== DisconnectReason.loggedOut;
-      console.log('Connection closed:', lastDisconnect?.error, 'Reconnecting:', shouldReconnect);
-      if (shouldReconnect && reconnectAttempts < maxReconnectAttempts) {
-        reconnectAttempts++;
-        setTimeout(() => connectBot(), 3000);
-      } else if (lastDisconnect?.error?.output?.statusCode === DisconnectReason.loggedOut) {
-        console.log('Logged out. Delete session and restart.');
-      }
+      console.log('Connection closed. Reconnecting:', shouldReconnect);
+      if (shouldReconnect) startBot();
     } else if (connection === 'open') {
-      reconnectAttempts = 0;
-      console.log(`✅ ${config.botName} ONLINE! Commands: ${Object.keys(global.commands).length}`);
-      console.log(`📱 Pair: ${config.pairNumber} | Mode: ${config.mode} | Prefix: None +.`);
-      await sock.sendMessage(config.ownerNumber + '@s.whatsapp.net', { text: `✅ *${config.botName} ONLINE*\n\n📊 Commands: ${Object.keys(global.commands).length}\n🔐 APIs: 45 Working\n⚙️ Mode: ${config.mode}\n📱 Pair: ${config.pairNumber}\n⏰ 24/7 Active\nType 'menu' to start` });
+      console.log(`✅ ${config.botName} Connected!`);
+      console.log(`📊 Total Commands: ${Object.keys(global.commands).length}`);
+      console.log(`🌐 24/7 Online: ENABLED`);
+      console.log(`📱 Use pairing code: ${config.pairNumber}`);
+      sock.sendPresenceUpdate('available');
     }
   });
 
-  // Auto Reject Calls
-  sock.ev.on('call', async (call) => {
-    if (config.antiCall && call[0].status === 'offer') {
-      await sock.rejectCall(call[0].id, call[0].from);
-      await sock.sendMessage(call[0].from, { text: config.anticallMsg });
-      await sock.updateBlockStatus(call[0].from, 'block');
-    }
-  });
+  // KEEP ALIVE - 24/7 ONLINE FIX
+  setInterval(async () => {
+    await sock.sendPresenceUpdate('available');
+  }, 10000);
 
-  // Message Handler
   sock.ev.on('messages.upsert', async ({ messages }) => {
     const m = messages[0];
     if (!m.message || m.key.fromMe) return;
 
-    const sender = m.key.participant || m.key.remoteJid;
-    const isOwner = global.owner.includes(sender.split('@')[0]);
-    const isGroup = m.key.remoteJid.endsWith('@g.us');
-    const body = m.message.conversation || m.message.extendedTextMessage?.text || m.message.imageMessage?.caption || m.message.videoMessage?.caption || '';
-
-    // Auto Read
-    if (config.autoread) await sock.readMessages([m.key]);
-
-    // Auto Typing
-    if (config.autotyping) await sock.sendPresenceUpdate('composing', m.key.remoteJid);
-
-    // Auto React
-    if (config.autoReact && Math.random() > 0.7) {
+    // Auto react
+    if (config.autoReact) {
       const emoji = config.reactEmojis[Math.floor(Math.random() * config.reactEmojis.length)];
       await sock.sendMessage(m.key.remoteJid, { react: { text: emoji, key: m.key } });
     }
 
-    // Anti Link
-    if (config.antilink && isGroup && body.match(/chat\.whatsapp\.com|https?:\/\//gi)) {
-      const isAdmin = await global.tools.isAdmin(sock, m.key.remoteJid, sender);
-      if (!isAdmin &&!isOwner) {
-        await sock.sendMessage(m.key.remoteJid, { text: `🔗 Links not allowed!` }, { quoted: m });
-        await sock.groupParticipantsUpdate(m.key.remoteJid, [sender], 'remove');
-        return;
-      }
+    // Auto read
+    if (config.autoread) await sock.readMessages([m.key]);
+
+    // Auto typing
+    if (config.autotyping) {
+      await sock.sendPresenceUpdate('composing', m.key.remoteJid);
+      await global.tools.sleep(2000);
     }
 
-    // Check Prefix - supports no prefix and.
+    // Get text
+    const body = m.message.conversation || m.message.extendedTextMessage?.text || m.message.imageMessage?.caption || '';
+
+    // Check prefix
     let usedPrefix = '';
-    let command = body.trim();
     for (const p of config.prefixes) {
-      if (body.startsWith(p) && p!== '') {
+      if (body.startsWith(p)) {
         usedPrefix = p;
-        command = body.slice(p.length).trim();
         break;
       }
     }
 
-    const cmdName = command.split(' ')[0].toLowerCase();
-    const q = command.slice(cmdName.length).trim();
-    const cmd = global.commands[cmdName];
+    const args = body.slice(usedPrefix.length).trim().split(/ +/);
+    const cmdName = args.shift().toLowerCase();
+    const q = args.join(' ');
+    const sender = m.key.participant || m.key.remoteJid;
+    const isGroup = m.key.remoteJid.endsWith('@g.us');
+    const isAdmin = isGroup? await isAdminCheck(sock, m.key.remoteJid, sender) : false;
 
+    // Find command
+    const cmd = global.commands[cmdName];
     if (!cmd) return;
 
-    // Mode Check
-    if (config.mode === 'private' &&!isOwner) return;
-    if (config.mode === 'self' &&!isOwner) return;
-
-    const isAdmin = isGroup? await global.tools.isAdmin(sock, m.key.remoteJid, sender) : false;
-
+    // Execute command - NO OWNER CHECK - ALL USERS CAN USE
     try {
-      await cmd.run(m, { sock, q, isOwner, isAdmin, sender });
+      await cmd.run(m, { sock, q, args, isAdmin, sender, isGroup });
     } catch (e) {
       console.error(`Error in ${cmdName}:`, e);
       await sock.sendMessage(m.key.remoteJid, { text: `❌ Error: ${e.message}` }, { quoted: m });
     }
   });
 
-  // Welcome & Goodbye
-  sock.ev.on('group-participants.update', async (update) => {
-    if (config.welcome && update.action === 'add') {
-      const metadata = await sock.groupMetadata(update.id);
-      for (const user of update.participants) {
-        const text = config.welcomeMsg.replace('@user', `@${user.split('@')[0]}`).replace('@group', metadata.subject);
-        await sock.sendMessage(update.id, { text, mentions: [user] });
-      }
-    }
-    if (config.goodbye && update.action === 'remove') {
-      const metadata = await sock.groupMetadata(update.id);
-      for (const user of update.participants) {
-        const text = config.goodbyeMsg.replace('@user', `@${user.split('@')[0]}`).replace('@group', metadata.subject);
-        await sock.sendMessage(update.id, { text, mentions: [user] });
+  // Welcome/Goodbye
+  sock.ev.on('group-participants.update', async ({ id, participants, action }) => {
+    if (!config.welcome &&!config.goodbye) return;
+    const metadata = await sock.groupMetadata(id);
+    for (let user of participants) {
+      const userName = `@${user.split('@')[0]}`;
+      if (action === 'add' && config.welcome) {
+        const text = config.welcomeMsg.replace('@user', userName).replace('@group', metadata.subject);
+        await sock.sendMessage(id, { text, mentions: [user] });
+      } else if (action === 'remove' && config.goodbye) {
+        const text = config.goodbyeMsg.replace('@user', userName).replace('@group', metadata.subject);
+        await sock.sendMessage(id, { text, mentions: [user] });
       }
     }
   });
+
+  // Anti-call
+  sock.ev.on('call', async (calls) => {
+    if (!config.antiCall) return;
+    for (let call of calls) {
+      if (call.status === 'offer') {
+        await sock.sendMessage(call.from, { text: config.anticallMsg });
+        await sock.updateBlockStatus(call.from, 'block');
+      }
+    }
+  });
+
+  return sock;
 }
 
-connectBot();
-console.log(`\n🎯 TOTAL COMMANDS: ${Object.keys(global.commands).length}\n🔐 API COMMANDS: 45\n✅ OFFLINE COMMANDS: 109\n📱 PAIRING: 263716491962\n⚡ 24/7 MODE ACTIVE\n`);
+startBot();
+
+// ------------------- EXPRESS KEEP ALIVE FOR RENDER/HEROKU -------------------
+const app = express();
+const PORT = process.env.PORT || 3000;
+app.get('/', (req, res) => res.send(`${config.botName} is running 24/7 ✅`));
+app.listen(PORT, () => console.log(`🌐 Server running on port ${PORT}`));
