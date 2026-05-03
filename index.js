@@ -1,3 +1,4 @@
+
 const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, Browsers, downloadMediaMessage } = require('@whiskeysockets/baileys');
 const pino = require('pino');
 const axios = require('axios');
@@ -1002,10 +1003,10 @@ async function startBot() {
       const userName = `@${user.split('@')[0]}`;
       if (action === 'add' && config.welcome) {
         const text = config.welcomeMsg.replace('@user', userName).replace('@group', metadata.subject);
-        await sock.sendMessage(id, { text, mentions: [user] });
+        await sock.sendMessage(id, { text, mentions: });
       } else if (action === 'remove' && config.goodbye) {
         const text = config.goodbyeMsg.replace('@user', userName).replace('@group', metadata.subject);
-        await sock.sendMessage(id, { text, mentions: [user] });
+        await sock.sendMessage(id, { text, mentions: });
       }
     }
   });
@@ -1024,7 +1025,10 @@ async function startBot() {
   return sock;
 }
 
-startBot();
+// FIX: Wrap startup in async IIFE to fix await error
+(async () => {
+  await startBot();
+})();
 
 // ------------------- EXPRESS KEEP ALIVE FOR RENDER/HEROKU -------------------
 const app = express();
