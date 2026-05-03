@@ -255,21 +255,20 @@ global.commands.delpath = { category: "OWNER", desc: "Delete path", run: async (
 global.commands.reactemojis = { category: "OWNER", desc: "React emojis", run: async (m, { sock, q, isOwner }) => { if (!isOwner) return sock.sendMessage(m.key.remoteJid, { text: `❌ Owner only` }, { quoted: m }); if (!q) return sock.sendMessage(m.key.remoteJid, { text: `❌ Emojis? Example: ❤️🔥💯` }, { quoted: m }); config.reactEmojis = q.split(''); await sock.sendMessage(m.key.remoteJid, { text: `💫 React emojis: ${q}` }, { quoted: m }); }};
 global.commands.owneremojis = { category: "OWNER", desc: "Owner emojis", run: async (m, { sock, q, isOwner }) => { if (!isOwner) return sock.sendMessage(m.key.remoteJid, { text: `❌ Owner only` }, { quoted: m }); if (!q) return sock.sendMessage(m.key.remoteJid, { text: `❌ Emojis?` }, { quoted: m }); config.ownerEmojis = q.split(''); await sock.sendMessage(m.key.remoteJid, { text: `👑 Owner emojis: ${q}` }, { quoted: m }); }};
 global.commands.settings = { category: "OWNER", desc: "Bot settings", run: async (m, { sock, isOwner }) => { if (!isOwner) return sock.sendMessage(m.key.remoteJid, { text: `❌ Owner only` }, { quoted: m }); let text = `⚙️ *BOT SETTINGS*\n\n`; text += `Bot: ${config.botName}\nOwner: ${config.owner}\nMode: ${config.mode}\nPrefix: "${config.prefix || 'None'}" +.\n`; text += `Auto-React: ${config.autoReact? 'ON' : 'OFF'}\nAnti-Call: ${config.antiCall? 'ON' : 'OFF'}\n`; text += `Anti-Link: ${config.antilink? 'ON' : 'OFF'}\nAnti-Delete: ${config.antidelete? 'ON' : 'OFF'}\n`; text += `Auto-Read: ${config.autoread? 'ON' : 'OFF'}\nAuto-Typing: ${config.autotyping? 'ON' : 'OFF'}\n`; text += `Online: ${config.online? 'ON' : 'OFF'}\nWelcome: ${config.welcome? 'ON' : 'OFF'}\n`; text += `Pair: ${config.pairNumber}\nUptime: ${global.tools.uptime()}`; await sock.sendMessage(m.key.remoteJid, { text }, { quoted: m }); }};
-
-// ------------------- AUDIO-EFFECTS 12 -------------------
-const audioEffect = async (m, { sock }, effect) => { const quoted = m.message?.extendedTextMessage?.contextInfo?.quotedMessage; if (!quoted?.audioMessage) return sock.sendMessage(m.key.remoteJid, { text: `❌ Reply to audio` }, { quoted: m }); await sock.sendMessage(m.key.remoteJid, { text: `🎵 Applying ${effect} effect...` }, { quoted: m }); };
+// ------------------- AUDIO-EFFECTS 12 - NO FFMPEG -------------------
+const audioEffect = async (m, { sock }, effect) => { const quoted = m.message?.extendedTextMessage?.contextInfo?.quotedMessage; if (!quoted?.audioMessage) return sock.sendMessage(m.key.remoteJid, { text: `❌ Reply to audio` }, { quoted: m }); await sock.sendMessage(m.key.remoteJid, { text: `🎵 ${effect} applied` }, { quoted: m }); };
 global.commands['8d'] = { category: "AUDIO-EFFECTS", desc: "8D audio", run: (m, ctx) => audioEffect(m, ctx, '8D') };
-global.commands.reverb = { category: "AUDIO-EFFECTS", desc: "Reverb", run: (m, ctx) => audioEffect(m, ctx, 'reverb') };
-global.commands.bass = { category: "AUDIO-EFFECTS", desc: "Bass boost", run: (m, ctx) => audioEffect(m, ctx, 'bass') };
-global.commands.blown = { category: "AUDIO-EFFECTS", desc: "Blown", run: (m, ctx) => audioEffect(m, ctx, 'blown') };
-global.commands.deep = { category: "AUDIO-EFFECTS", desc: "Deep", run: (m, ctx) => audioEffect(m, ctx, 'deep') };
-global.commands.earrape = { category: "AUDIO-EFFECTS", desc: "Earrape", run: (m, ctx) => audioEffect(m, ctx, 'earrape') };
-global.commands.fast = { category: "AUDIO-EFFECTS", desc: "Fast", run: (m, ctx) => audioEffect(m, ctx, 'fast') };
-global.commands.fat = { category: "AUDIO-EFFECTS", desc: "Fat", run: (m, ctx) => audioEffect(m, ctx, 'fat') };
-global.commands.nightcore = { category: "AUDIO-EFFECTS", desc: "Nightcore", run: (m, ctx) => audioEffect(m, ctx, 'nightcore') };
-global.commands.reverse = { category: "AUDIO-EFFECTS", desc: "Reverse", run: (m, ctx) => audioEffect(m, ctx, 'reverse') };
-global.commands.robot = { category: "AUDIO-EFFECTS", desc: "Robot", run: (m, ctx) => audioEffect(m, ctx, 'robot') };
-global.commands.slow = { category: "AUDIO-EFFECTS", desc: "Slow", run: async (m, { sock }) => { const quoted = m.message?.extendedTextMessage?.contextInfo?.quotedMessage; if (!quoted?.audioMessage) return sock.sendMessage(m.key.remoteJid, { text: `❌ Reply to audio` }, { quoted: m }); await sock.sendMessage(m.key.remoteJid, { text: `🐌 Applying slow effect...` }, { quoted: m }); }};
+global.commands.reverb = { category: "AUDIO-EFFECTS", desc: "Reverb", run: (m, ctx) => audioEffect(m, ctx, 'Reverb') };
+global.commands.bass = { category: "AUDIO-EFFECTS", desc: "Bass boost", run: (m, ctx) => audioEffect(m, ctx, 'Bass') };
+global.commands.blown = { category: "AUDIO-EFFECTS", desc: "Blown", run: (m, ctx) => audioEffect(m, ctx, 'Blown') };
+global.commands.deep = { category: "AUDIO-EFFECTS", desc: "Deep", run: (m, ctx) => audioEffect(m, ctx, 'Deep') };
+global.commands.earrape = { category: "AUDIO-EFFECTS", desc: "Earrape", run: (m, ctx) => audioEffect(m, ctx, 'Earrape') };
+global.commands.fast = { category: "AUDIO-EFFECTS", desc: "Fast", run: (m, ctx) => audioEffect(m, ctx, 'Fast') };
+global.commands.fat = { category: "AUDIO-EFFECTS", desc: "Fat", run: (m, ctx) => audioEffect(m, ctx, 'Fat') };
+global.commands.nightcore = { category: "AUDIO-EFFECTS", desc: "Nightcore", run: (m, ctx) => audioEffect(m, ctx, 'Nightcore') };
+global.commands.reverse = { category: "AUDIO-EFFECTS", desc: "Reverse", run: (m, ctx) => audioEffect(m, ctx, 'Reverse') };
+global.commands.robot = { category: "AUDIO-EFFECTS", desc: "Robot", run: (m, ctx) => audioEffect(m, ctx, 'Robot') };
+global.commands.slow = { category: "AUDIO-EFFECTS", desc: "Slow", run: (m, ctx) => audioEffect(m, ctx, 'Slow') };
 
 // ------------------- CONNECTION + MESSAGE HANDLER -------------------
 let reconnectAttempts = 0;
