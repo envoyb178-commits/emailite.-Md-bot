@@ -996,19 +996,24 @@ async function startBot() {
     }
   });
 
-  sock.ev.on('group-participants.update', async ({ id, participants, action }) => {
-    if (action === 'add') {
-      for (const user of participants) {
-        await sock.sendMessage(id, { text: `👋 Welcome @${user.split('@')[0]} to the group!`, mentions: [user] });
-      }
-    } else if (action === 'remove') {
-      for (const user of participants) {
-        await sock.sendMessage(id, { text: `👋 Goodbye @${user.split('@')[0]}`, mentions: [user] });
-      }
-    }
-  });
-}
 
+sock.ev.on('group-participants.update', async ({ id, participants, action }) => {
+  if (action === 'add') {
+    for (const user of participants) {
+      await sock.sendMessage(id, { 
+        text: `👋 Welcome @${user.split('@')[0]} to the group!`, 
+        mentions: [user] 
+      });
+    }
+  } else if (action === 'remove') {
+    for (const user of participants) {
+      await sock.sendMessage(id, { 
+        text: `👋 Goodbye @${user.split('@')[0]}`, 
+        mentions: [user] 
+      });
+    }
+  }
+});
 // THIS STARTS THE BOT AND GENERATES PAIRING CODE
 startBot();
 
