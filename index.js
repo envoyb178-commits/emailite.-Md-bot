@@ -1,4 +1,3 @@
-
 const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, Browsers, downloadMediaMessage } = require('@whiskeysockets/baileys');
 const pino = require('pino');
 const axios = require('axios');
@@ -449,7 +448,6 @@ global.commands.leave = { category: "GROUP", desc: "Leave group", run: async (m,
   await sock.sendMessage(m.key.remoteJid, { text: `👋 Leaving group...` }, { quoted: m });
   await sock.groupLeave(m.key.remoteJid);
 }};
-
 global.commands.joinrequests = { category: "GROUP", desc: "Handle join requests", run: async (m, { sock, q, isAdmin }) => {
   if (!m.key.remoteJid.endsWith('@g.us')) return sock.sendMessage(m.key.remoteJid, { text: `❌ Group only` }, { quoted: m });
   if (!isAdmin) return sock.sendMessage(m.key.remoteJid, { text: `❌ Admin only` }, { quoted: m });
@@ -587,7 +585,7 @@ global.commands.del = { category: "GROUP", desc: "Delete message", run: async (m
   await sock.sendMessage(m.key.remoteJid, { delete: { remoteJid: m.key.remoteJid, fromMe: false, id: m.message.extendedTextMessage.contextInfo.stanzaId, participant: m.message.extendedTextMessage.contextInfo.participant } });
 }};
 
-// ------------------- WHATSAPP 8 - NO OWNER ONLY -------------------
+// ------------------- WHATSAPP 8 -------------------
 global.commands.online = { category: "WHATSAPP", desc: "Change online privacy", run: async (m, { sock, q }) => {
   if (!q) return sock.sendMessage(m.key.remoteJid, { text: `_*Example:-* online all_\n_to change *online* privacy settings_` }, { quoted: m });
   const available_privacy = ['all', 'match_last_seen'];
@@ -669,7 +667,7 @@ global.commands.dlt = { category: "WHATSAPP", desc: "Delete replied message", ru
   } catch (e) {}
 }};
 
-// ------------------- APP 13 - NO OWNER ONLY -------------------
+// ------------------- APP 13 -------------------
 global.commands.update = { category: "APP", desc: "Update bot", run: async (m, { sock, q }) => {
   await git.fetch();
   var commits = await git.log(['main' + "..origin/" + 'main']);
@@ -855,6 +853,18 @@ global.commands.fb = { category: "DOWNLOADER", desc: "Facebook downloader", run:
     await sock.sendMessage(m.key.remoteJid, { react: { text: '❌', key: m.key } });
   }
 }};
+
+global.commands.spotify = { category: "DOWNLOADER", desc: "Spotify search & play", run: async (m, { sock, q }) => {
+  try {
+    q = q || m.message?.extendedTextMessage?.contextInfo?.quotedMessage?.conversation;
+    if(!q) return sock.sendMessage(m.key.remoteJid, { text: `❌ Enter song name` }, { quoted: m });
+    await sock.sendMessage(m.key.remoteJid, { react: { text: '🔎', key: m.key } });
+    const ser = await axios.get(config.API + "/api/search/spotify?search=" + q);
+    const play = ser.data.data[0];
+    await sock.sendMessage(m.key.remoteJid, { react: { text: '⬇️', key: m.key } });
+    await sock.sendMessage(m.key.remoteJid, { text: `_Downloading ${play.name} By ${play.artists}_` }, { quoted: m });
+    const url = await axios.get(config.API + "/api/downloader/spotify?url=" + play.link);
+    await sock.sendMessage(m.key.remoteJid, { audio: { url:
     const url = await axios.get(config.API + "/api/downloader/spotify?url=" + play.link);
     await sock.sendMessage(m.key.remoteJid, { audio: { url: url.data.data.download }, mimetype: "audio/mpeg" }, { quoted: m });
     await sock.sendMessage(m.key.remoteJid, { react: { text: '✅', key: m.key } });
@@ -915,11 +925,11 @@ async function startBot() {
   const { state, saveCreds } = await useMultiFileAuthState(config.sessionDir);
   const sock = makeWASocket({
     logger: pino({ level: 'silent' }),
-    printQRInTerminal: false, // QR REMOVED
+    printQRInTerminal: false,
     auth: state,
     browser: Browsers.macOS('Desktop'),
     syncFullHistory: false,
-    markOnlineOnConnect: true // 24/7 ONLINE
+    markOnlineOnConnect: true
   });
 
   sock.ev.on('creds.update', saveCreds);
@@ -939,7 +949,6 @@ async function startBot() {
     }
   });
 
-  // KEEP ALIVE - 24/7 ONLINE FIX
   setInterval(async () => {
     await sock.sendPresenceUpdate('available');
   }, 10000);
@@ -948,25 +957,20 @@ async function startBot() {
     const m = messages[0];
     if (!m.message || m.key.fromMe) return;
 
-    // Auto react
     if (config.autoReact) {
       const emoji = config.reactEmojis[Math.floor(Math.random() * config.reactEmojis.length)];
       await sock.sendMessage(m.key.remoteJid, { react: { text: emoji, key: m.key } });
     }
 
-    // Auto read
     if (config.autoread) await sock.readMessages([m.key]);
 
-    // Auto typing
     if (config.autotyping) {
       await sock.sendPresenceUpdate('composing', m.key.remoteJid);
       await global.tools.sleep(2000);
     }
 
-    // Get text
     const body = m.message.conversation || m.message.extendedTextMessage?.text || m.message.imageMessage?.caption || '';
 
-    // Check prefix
     let usedPrefix = '';
     for (const p of config.prefixes) {
       if (body.startsWith(p)) {
@@ -982,11 +986,9 @@ async function startBot() {
     const isGroup = m.key.remoteJid.endsWith('@g.us');
     const isAdmin = isGroup? await isAdminCheck(sock, m.key.remoteJid, sender) : false;
 
-    // Find command
     const cmd = global.commands[cmdName];
     if (!cmd) return;
 
-    // Execute command - NO OWNER CHECK - ALL USERS CAN USE
     try {
       await cmd.run(m, { sock, q, args, isAdmin, sender, isGroup });
     } catch (e) {
@@ -995,7 +997,6 @@ async function startBot() {
     }
   });
 
-  // Welcome/Goodbye
   sock.ev.on('group-participants.update', async ({ id, participants, action }) => {
     if (!config.welcome &&!config.goodbye) return;
     const metadata = await sock.groupMetadata(id);
@@ -1011,7 +1012,6 @@ async function startBot() {
     }
   });
 
-  // Anti-call
   sock.ev.on('call', async (calls) => {
     if (!config.antiCall) return;
     for (let call of calls) {
@@ -1022,7 +1022,10 @@ async function startBot() {
     }
   });
 
-  // ------------------- BOT STARTUP - FIXED -------------------
+  return sock;
+}
+
+// ------------------- FIXED STARTUP - NO AWAIT ERROR -------------------
 (async () => {
   await startBot();
 })();
