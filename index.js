@@ -24,7 +24,7 @@ console.log('🚀 BOOTING EMAILLITE MD - 154 COMMANDS - 24/7');
 global.config = {
   owner: "Envoy Chiambiro",
   ownerNumber: "27836024885",
-  pairNumber: "263716491962",
+  pairNumber: "27836024885",
   botName: "EMAILLITE MD",
   version: "11.0.0",
   mode: "public",
