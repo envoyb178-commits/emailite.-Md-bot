@@ -1022,15 +1022,12 @@ async function startBot() {
     }
   });
 
-  return sock;
-}
-
-// FIX: Wrap startup in async IIFE to fix await error
+  // ------------------- BOT STARTUP - FIXED -------------------
 (async () => {
   await startBot();
 })();
 
-// ------------------- EXPRESS KEEP ALIVE FOR RENDER/HEROKU -------------------
+// ------------------- EXPRESS KEEP ALIVE -------------------
 const app = express();
 const PORT = process.env.PORT || 3000;
 app.get('/', (req, res) => res.send(`${config.botName} is running 24/7 ✅`));
