@@ -14,7 +14,7 @@ global.config = {
   owner: "Envoy Chiambiro",
   ownerNumber: "27836024885",
   pairNumber: "27836024885",
-  botName: "EMAILLITE MD",
+  botName: "EMAILLITE. MD",
   version: "11.0.0",
   mode: "public",
   sessionDir: "./session",
