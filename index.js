@@ -1,20 +1,18 @@
-import express from 'express';
 import { makeWASocket, useMultiFileAuthState, DisconnectReason } from '@whiskeysockets/baileys';
 import pino from 'pino';
 import axios from 'axios';
-
-// Keep Render alive
-const app = express();
-const PORT = process.env.PORT || 3000;
-app.get('/', (req, res) => res.send('EMAILITE Bot is running 24/7'));
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+import FormData from 'form-data';
 
 const prefix = '.';
-const botName = 'EMAILITE';
-const ownerNumber = '27836024885'; // South Africa number without +
+const botName = 'Emaillite bot';
+const ownerNumber = '27836024885';
+const menuImage = 'https://files.catbox.moe/abc123.jpg'; // Replace with your image URL
 
 const db = {
   antilink: false,
+  antispam: false,
+  warn: {},
+  mute: false,
   sudo: [ownerNumber]
 };
 
@@ -24,6 +22,8 @@ const API = {
   ytmp3: 'https://api.cobain.xyz/api/ytmp3?url=',
   ytmp4: 'https://api.cobain.xyz/api/ytmp4?url=',
   ytsearch: 'https://api.cobain.xyz/api/ytsearch?query=',
+  remini: 'https://api.akuari.my.id/tools/remini?url=',
+  removebg: 'https://api.akuari.my.id/tools/removebg?url=',
   crypto: 'https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,solana&vs_currencies=usd'
 };
 
@@ -36,35 +36,41 @@ function isSudo(sender) {
   return db.sudo.includes(sender.split('@')[0]);
 }
 
+async function uploadTo0x0(buffer, filename = 'image.jpg') {
+  const form = new FormData();
+  form.append('file', buffer, filename);
+  const { data } = await axios.post('https://0x0.st', form, {
+    headers: form.getHeaders(),
+    maxBodyLength: Infinity
+  });
+  return data.trim();
+}
+
 async function startBot() {
   const { state, saveCreds } = await useMultiFileAuthState('auth');
-
   const sock = makeWASocket({
     auth: state,
     logger: pino({ level: 'silent' }),
-    printQRInTerminal: false,
     keepAliveIntervalMs: 30000,
-    browser: ['EMAILITE', 'Chrome', '120.0']
+    printQRInTerminal: false
   });
 
   if (!sock.authState.creds.registered) {
     const code = await sock.requestPairingCode(ownerNumber);
-    console.log(`\n✅ PAIRING CODE for +27 83 602 4885: ${code}\n`);
-    console.log('Go to WhatsApp > Linked Devices > Link with phone number > Enter code\n');
+    console.log(`\n✅ Pairing Code for ${ownerNumber}: ${code}\n`);
   }
 
-  sock.ev.on('connection.update', ({ connection, lastDisconnect }) => {
+  sock.ev.on('connection.update', async ({ connection, lastDisconnect }) => {
     if (connection === 'close') {
-      const shouldReconnect = lastDisconnect?.error?.output?.statusCode!== DisconnectReason.loggedOut;
-      if (shouldReconnect) {
-        console.log('Reconnecting...');
-        setTimeout(startBot, 3000);
-      } else {
-        console.log('Logged out. Delete auth folder and restart to get new code.');
-      }
+      if (lastDisconnect?.error?.output?.statusCode!== DisconnectReason.loggedOut) startBot();
     }
     if (connection === 'open') {
-      console.log(`✅ ${botName} connected 24/7`);
+      console.log(`✅ ${botName} connected`);
+      // Send startup image to owner
+      await sock.sendMessage(ownerNumber + '@s.whatsapp.net', {
+        image: { url: menuImage },
+        caption: `✅ *${botName}* is online\nPrefix: ${prefix}\nType ${prefix}menu`
+      }).catch(() => {});
     }
   });
 
@@ -89,38 +95,84 @@ async function startBot() {
 
     try {
       if (cmd === 'menu') {
-        const commands = [
-          '.menu', '.alive', '.owner', '.ping',
-          '.ai', '.chat', '.copilot', '.deepseek',
-          '.img', '.logo', '.play', '.song', '.play2',
-          '.video', '.ytmp3', '.ytmp4', '.crypto',
-          '.antilink', '.invitelink', '.revokelink',
-          '.kick', '.addmember', '.promote', '.demote',
-          '.setname', '.setdesc', '.members', '.lockgroup',
-          '.unlockgroup', '.tagall', '.everyone', '.opengroup',
-          '.closegroup', '.leavegc', '.mute', '.unmute',
-          '.broadcastall', '.setsudo', '.delsudo'
-        ];
-
-        const menuText = `┌─❖ *${botName} BOT* ❖
-│ Online 24/7 | +27 83 602 4885
+        const mainMenu = `┌─❖ *${botName}* ❖
+│ Online 24/7 | v4.0.0
 └─────────────┈⳹
 
-${commands.join('\n')}
+╭─❖ *CATEGORIES* ❖
+│.menu group
+│.menu anti
+│.menu ai
+│.menu img
+│.menu music
+│.menu tools
+│.menu owner
+╰─────────────
 
-Type ${prefix}command to use it.`;
+Type.menu [category] to view commands`;
 
-        return sock.sendMessage(chat, { text: menuText }, { quoted: m });
-      }
+        const menus = {
+          group: `╭─❖ *GROUP MENU* ❖
+│.antilink
+│.kick
+│.addmember
+│.promote
+│.demote
+│.setname
+│.setdesc
+│.members
+│.lockgroup
+│.unlockgroup
+│.tagall
+│.everyone
+│.opengroup
+│.closegroup
+│.leavegc
+│.invitelink
+│.revokelink
+╰─────────────`,
+          anti: `╭─❖ *ANTI MENU* ❖
+│.antilink
+│.mute
+│.unmute
+╰─────────────`,
+          ai: `╭─❖ *AI MENU* ❖
+│.ai
+│.chat
+│.deepseek
+│.copilot
+╰─────────────`,
+          img: `╭─❖ *AI IMAGE MENU* ❖
+│.img
+│.logo
+╰─────────────`,
+          music: `╭─❖ *MUSIC MENU* ❖
+│.play
+│.song
+│.play2
+│.video
+│.ytmp3
+│.ytmp4
+╰─────────────`,
+          tools: `╭─❖ *TOOLS MENU* ❖
+│.hdimg
+│.removebg
+│.crypto
+╰─────────────`,
+          owner: `╭─❖ *OWNER MENU* ❖
+│.broadcastall
+│.setsudo
+│.delsudo
+╰─────────────`
+        };
 
-      if (cmd === 'alive' || cmd === 'ping') {
-        return sock.sendMessage(chat, { text: `✅ ${botName} is online 24/7` }, { quoted: m });
-      }
-
-      if (cmd === 'owner') {
-        return sock.sendMessage(chat, {
-          text: `👑 Owner: wa.me/${ownerNumber}\nBot: ${botName} v4.0.0\nStatus: Online 24/7`
-        }, { quoted: m });
+        if (!text) {
+          return sock.sendMessage(chat, { image: { url: menuImage }, caption: mainMenu }, { quoted: m });
+        }
+        if (menus[text]) {
+          return sock.sendMessage(chat, { image: { url: menuImage }, caption: menus[text] }, { quoted: m });
+        }
+        return sock.sendMessage(chat, { text: 'Category not found' }, { quoted: m });
       }
 
       if (cmd === 'ai' || cmd === 'chat' || cmd === 'copilot') {
@@ -142,13 +194,13 @@ Type ${prefix}command to use it.`;
       }
 
       if (cmd === 'logo') {
-        if (!text) return sock.sendMessage(chat, { text: `Usage: ${prefix}logo EMAILITE` }, { quoted: m });
+        if (!text) return sock.sendMessage(chat, { text: `Usage: ${prefix}logo Emaillite bot` }, { quoted: m });
         const { data } = await axios.get(API.img + encodeURIComponent('logo design ' + text));
         return sock.sendMessage(chat, { image: { url: data.result } }, { quoted: m });
       }
 
-      if (cmd === 'play' || cmd === 'song' || cmd === 'play2') {
-        if (!text) return sock.sendMessage(chat, { text: `Usage: ${prefix}play faded` }, { quoted: m });
+      if (['play', 'song', 'play2'].includes(cmd)) {
+        if (!text) return sock.sendMessage(chat, { text: `Usage: ${prefix}${cmd} faded` }, { quoted: m });
         let url = text;
         if (!text.startsWith('http')) {
           const search = await axios.get(API.ytsearch + encodeURIComponent(text));
@@ -178,6 +230,24 @@ Type ${prefix}command to use it.`;
         return sock.sendMessage(chat, { video: { url: data.data.url }, caption: data.data.title }, { quoted: m });
       }
 
+      if (cmd === 'hdimg') {
+        const quoted = m.message.extendedTextMessage?.contextInfo?.quotedMessage;
+        if (!quoted?.imageMessage) return sock.sendMessage(chat, { text: 'Reply to an image' }, { quoted: m });
+        const media = await sock.downloadMediaMessage(quoted);
+        const url = await uploadTo0x0(media, 'hd.jpg');
+        const { data } = await axios.get(API.remini + encodeURIComponent(url));
+        return sock.sendMessage(chat, { image: { url: data.result } }, { quoted: m });
+      }
+
+      if (cmd === 'removebg') {
+        const quoted = m.message.extendedTextMessage?.contextInfo?.quotedMessage;
+        if (!quoted?.imageMessage) return sock.sendMessage(chat, { text: 'Reply to an image' }, { quoted: m });
+        const media = await sock.downloadMediaMessage(quoted);
+        const url = await uploadTo0x0(media, 'bg.jpg');
+        const { data } = await axios.get(API.removebg + encodeURIComponent(url));
+        return sock.sendMessage(chat, { image: { url: data.result } }, { quoted: m });
+      }
+
       if (cmd === 'crypto') {
         const { data } = await axios.get(API.crypto);
         const msg = `💰 Crypto Prices\nBTC: $${data.bitcoin.usd}\nETH: $${data.ethereum.usd}\nSOL: $${data.solana.usd}`;
@@ -188,18 +258,6 @@ Type ${prefix}command to use it.`;
         if (!isAdminUser) return sock.sendMessage(chat, { text: 'Admin only' }, { quoted: m });
         db.antilink = args[0] === 'on';
         return sock.sendMessage(chat, { text: `Antilink ${args[0]}` }, { quoted: m });
-      }
-
-      if (cmd === 'invitelink') {
-        if (!isGroup) return sock.sendMessage(chat, { text: 'Group only' }, { quoted: m });
-        const code = await sock.groupInviteCode(chat);
-        return sock.sendMessage(chat, { text: `https://chat.whatsapp.com/${code}` }, { quoted: m });
-      }
-
-      if (cmd === 'revokelink') {
-        if (!isGroup ||!isAdminUser) return sock.sendMessage(chat, { text: 'Admin only' }, { quoted: m });
-        await sock.groupRevokeInvite(chat);
-        return sock.sendMessage(chat, { text: 'Link revoked' }, { quoted: m });
       }
 
       if (cmd === 'kick') {
@@ -239,7 +297,7 @@ Type ${prefix}command to use it.`;
       if (cmd === 'setdesc') {
         if (!isGroup ||!isAdminUser) return sock.sendMessage(chat, { text: 'Admin only' }, { quoted: m });
         await sock.groupUpdateDescription(chat, text);
-        return sock.sendMessage(chat, { text: 'Group description updated' }, { quoted: m });
+        return sock.sendMessage(chat, { text: 'Group desc updated' }, { quoted: m });
       }
 
       if (cmd === 'members') {
@@ -260,12 +318,7 @@ Type ${prefix}command to use it.`;
         return sock.sendMessage(chat, { text: 'Group unlocked' }, { quoted: m });
       }
 
-      if (cmd === 'tagall') {
-        if (!isGroup ||!isAdminUser) return sock.sendMessage(chat, { text: 'Admin only' }, { quoted: m });
-        return sock.sendMessage(chat, { text: text || 'Tag all', mentions: participants.map(p => p.id) });
-      }
-
-      if (cmd === 'everyone') {
+      if (cmd === 'tagall' || cmd === 'everyone') {
         if (!isGroup ||!isAdminUser) return sock.sendMessage(chat, { text: 'Admin only' }, { quoted: m });
         return sock.sendMessage(chat, { text: text || 'Everyone', mentions: participants.map(p => p.id) });
       }
@@ -288,6 +341,18 @@ Type ${prefix}command to use it.`;
         return sock.sendMessage(chat, { text: 'Left group' }, { quoted: m });
       }
 
+      if (cmd === 'invitelink') {
+        if (!isGroup) return sock.sendMessage(chat, { text: 'Group only' }, { quoted: m });
+        const code = await sock.groupInviteCode(chat);
+        return sock.sendMessage(chat, { text: `https://chat.whatsapp.com/${code}` }, { quoted: m });
+      }
+
+      if (cmd === 'revokelink') {
+        if (!isGroup ||!isAdminUser) return sock.sendMessage(chat, { text: 'Admin only' }, { quoted: m });
+        await sock.groupRevokeInvite(chat);
+        return sock.sendMessage(chat, { text: 'Link revoked' }, { quoted: m });
+      }
+
       if (cmd === 'mute') {
         if (!isGroup ||!isAdminUser) return sock.sendMessage(chat, { text: 'Admin only' }, { quoted: m });
         db.mute = true;
@@ -303,9 +368,7 @@ Type ${prefix}command to use it.`;
       if (cmd === 'broadcastall') {
         if (!isSudo(senderNum)) return sock.sendMessage(chat, { text: 'Owner only' }, { quoted: m });
         for (let id of Object.keys(sock.chats)) {
-          if (id.endsWith('@s.whatsapp.net')) {
-            await sock.sendMessage(id, { text: `[BROADCAST]\n${text}` });
-          }
+          if (id.endsWith('@s.whatsapp.net')) await sock.sendMessage(id, { text: `[BROADCAST]\n${text}` });
         }
         return sock.sendMessage(chat, { text: 'Broadcast sent' }, { quoted: m });
       }
@@ -322,22 +385,26 @@ Type ${prefix}command to use it.`;
         return sock.sendMessage(chat, { text: 'Sudo removed' }, { quoted: m });
       }
 
+      if (cmd === 'ping') {
+        return sock.sendMessage(chat, { text: `✅ ${botName} is online` }, { quoted: m });
+      }
+
     } catch (err) {
-      console.log('Error:', err);
-      sock.sendMessage(chat, { text: '❌ Error occurred. Check logs.' }, { quoted: m });
+      console.log(err);
+      sock.sendMessage(chat, { text: '❌ Error occurred' }, { quoted: m });
     }
   });
 
   sock.ev.on('messages.upsert', async ({ messages }) => {
     const m = messages[0];
     if (!m.message ||!m.key.remoteJid.endsWith('@g.us')) return;
+    const chat = m.key.remoteJid;
     if (!db.antilink) return;
-
     const text = m.message.conversation || m.message.extendedTextMessage?.text || '';
-    const metadata = await sock.groupMetadata(m.key.remoteJid);
+    const metadata = await sock.groupMetadata(chat);
     if (text.includes('http') &&!isAdmin(metadata.participants, m.key.participant)) {
-      await sock.sendMessage(m.key.remoteJid, { delete: m.key });
-      sock.sendMessage(m.key.remoteJid, { text: '🚫 Links not allowed' });
+      await sock.sendMessage(chat, { delete: m.key });
+      sock.sendMessage(chat, { text: '🚫 Links not allowed' });
     }
   });
 }
